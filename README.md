@@ -30,6 +30,7 @@
 更完整的清单见：
 
 - `reports/00-sample-inventory.md`
+- `reports/01-upload-verification.md`
 - `workspace/notes/native-libs-arm64.txt`
 - `originals/hashes/`
 
@@ -37,7 +38,7 @@
 
 ```text
 dobao-say/
-├── originals/                 # 只读基线，勿改
+├── originals/                 # 只读基线，勿改（Git LFS）
 │   ├── apk/doubao-ime-original.apk
 │   └── hashes/                # sha256 / md5
 ├── workspace/
@@ -47,9 +48,10 @@ dobao-say/
 │   └── notes/                 # 手工笔记、中间结果
 ├── tools/                     # 本地工具脚本/包装
 ├── docs/                      # 分析文档
-├── reports/                   # 阶段性报告
-└── 豆包输入法.apk             # 用户原始投放文件（与 originals 内容一致）
+└── reports/                   # 阶段性报告
 ```
+
+> 本地投放文件名可为 `豆包输入法.apk`（根目录，已 `.gitignore`）；入库规范名一律用 `originals/apk/doubao-ime-original.apk`。
 
 ## 关键组件线索
 
@@ -95,9 +97,10 @@ dobao-say/
 
 ## 当前状态
 
-- [x] 原始 APK 入库并规范化命名
+- [x] 原始 APK 入库并规范化命名（Git LFS）
 - [x] 哈希与签名证书提取
 - [x] 包名/组件/so/大资源粗粒度清单
+- [x] 2026-07-18 完整性复验（见 `reports/01-upload-verification.md`）
 - [ ] 完整 apktool/jadx 反编译
 - [ ] 加固与混淆评估
 - [ ] 核心输入链路梳理
