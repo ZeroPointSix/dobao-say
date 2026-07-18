@@ -1,6 +1,7 @@
 package com.zeropointsix.dobaosay.asr
 
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @JvmInline
@@ -14,7 +15,7 @@ data class AsrSessionConfig(
     val audioFormat: AudioFormat = AudioFormat(),
     val connectTimeout: Duration = 10.seconds,
     val stopFinalTimeout: Duration = 10.seconds,
-    val sessionTimeout: Duration = 5 * 60.seconds,
+    val sessionTimeout: Duration = 5.minutes,
 ) {
     init {
         require(connectTimeout.isPositive()) { "Connect timeout must be positive" }
