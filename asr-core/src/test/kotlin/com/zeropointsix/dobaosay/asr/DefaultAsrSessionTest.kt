@@ -7,10 +7,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.time.Duration.Companion.seconds
 
@@ -183,11 +187,10 @@ class DefaultAsrSessionTest {
 
     @Test
     fun `connect callback from another coroutine never deadlocks the actor`() = runTest {
+        val callbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val driver = object : AsrDriver {
             override suspend fun connect(sink: suspend (DriverSignal) -> Unit) {
-                coroutineScope {
-                    async(Dispatchers.Default) { sink(DriverSignal.Ready) }.await()
-                }
+                callbackScope.async { sink(DriverSignal.Ready) }.await()
             }
 
             override suspend fun sendAudio(frame: AudioFrame) = Unit
@@ -197,9 +200,13 @@ class DefaultAsrSessionTest {
         }
         val session = DefaultAsrSession(AsrSessionConfig(), driver)
 
-        assertEquals(AsrCommandResult.Accepted, withTimeout(5.seconds) { session.start() })
+        assertEquals(
+            AsrCommandResult.Accepted,
+            withContext(Dispatchers.Default) { withTimeout(5.seconds) { session.start() } },
+        )
         session.awaitState { it == AsrSessionState.Ready }
         session.cancel(CancelReason.USER)
+        callbackScope.cancel()
     }
 
     @Test
@@ -256,8 +263,10 @@ class DefaultAsrSessionTest {
     }
 
     private suspend fun DefaultAsrSession.awaitState(predicate: (AsrSessionState) -> Boolean) {
-        withTimeout(5.seconds) {
-            snapshot.first { predicate(it.state) }
+        withContext(Dispatchers.Default) {
+            withTimeout(5.seconds) {
+                snapshot.first { predicate(it.state) }
+            }
         }
     }
 
