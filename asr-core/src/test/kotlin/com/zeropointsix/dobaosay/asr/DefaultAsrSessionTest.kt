@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -34,12 +35,15 @@ class DefaultAsrSessionTest {
         val events = async(start = CoroutineStart.UNDISPATCHED) { session.events.take(4).toList() }
 
         assertEquals(AsrCommandResult.Accepted, session.start())
+        driver.awaitConnected()
         driver.emit(DriverSignal.Ready)
         assertEquals(AsrCommandResult.Accepted, session.pushAudio(frame(0)))
         assertEquals(AsrCommandResult.Accepted, session.stop())
+        driver.awaitEffects { stopCount == 1 }
         driver.emit(DriverSignal.Final("result-1", "utterance-1", "测试文本"))
         driver.emit(DriverSignal.Final("result-1", "utterance-1", "重复文本"))
         session.awaitClosed()
+        driver.awaitEffects { releaseCount == 1 }
 
         assertIs<SessionOutcome.Succeeded>((session.snapshot.value.state as AsrSessionState.Closed).outcome)
         assertEquals(1, driver.stopCount)
@@ -67,6 +71,7 @@ class DefaultAsrSessionTest {
             ).awaitAll()
         }
         session.awaitClosed()
+        driver.awaitEffects { releaseCount == 1 }
         runCurrent()
 
         assertEquals(1, events.filterIsInstance<AsrEvent.Final>().size)
@@ -98,6 +103,7 @@ class DefaultAsrSessionTest {
             ).awaitAll()
         }
         session.awaitClosed()
+        driver.awaitEffects { releaseCount == 1 }
         runCurrent()
 
         assertEquals(1, events.filterIsInstance<AsrEvent.Closed>().size)
@@ -117,6 +123,7 @@ class DefaultAsrSessionTest {
         }
 
         assertTrue(pushes.awaitAll().all { it == AsrCommandResult.Accepted })
+        driver.awaitEffects { receivedFrames.size == 16 }
         assertEquals((0L until 16L).toList(), driver.receivedFrames.map(AudioFrame::sequence))
         session.cancel(CancelReason.USER)
     }
@@ -131,6 +138,7 @@ class DefaultAsrSessionTest {
 
         assertEquals(AsrCommandResult.Accepted, push.await())
         assertEquals(AsrCommandResult.Accepted, stop.await())
+        driver.awaitEffects { effects.size >= 3 }
         assertEquals(listOf("connect", "push:0", "stop"), driver.effects.toList())
         assertIs<AsrCommandResult.Rejected>(session.pushAudio(frame(1)))
         assertEquals(1, driver.receivedFrames.size)
@@ -148,6 +156,7 @@ class DefaultAsrSessionTest {
                 async(Dispatchers.Default) { session.cancel(CancelReason.APP_BACKGROUNDED) },
             ).awaitAll()
         }
+        driver.awaitEffects { releaseCount == 1 }
 
         assertEquals(1, results.count { it == AsrCommandResult.Accepted })
         assertEquals(1, results.count { it == AsrCommandResult.IgnoredAlreadyHandled })
@@ -164,6 +173,7 @@ class DefaultAsrSessionTest {
         driver.emit(DriverSignal.SpeechEnded)
         driver.emit(DriverSignal.SpeechEnded)
         session.awaitState { it is AsrSessionState.Stopping }
+        driver.awaitEffects { stopCount == 1 }
         assertEquals(AsrCommandResult.IgnoredAlreadyHandled, session.stop())
 
         assertEquals(1, driver.stopCount)
@@ -178,6 +188,7 @@ class DefaultAsrSessionTest {
 
         driver.emit(DriverSignal.RemoteClosed)
         session.awaitClosed()
+        driver.awaitEffects { releaseCount == 1 }
 
         val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
         val failure = assertIs<SessionOutcome.Failed>(outcome).failure
@@ -215,8 +226,10 @@ class DefaultAsrSessionTest {
         val session = readySession(driver)
 
         session.stop()
+        driver.awaitEffects { stopCount == 1 }
         assertEquals(AsrCommandResult.IgnoredAlreadyHandled, session.stop())
         session.close()
+        driver.awaitEffects { releaseCount == 1 }
         assertEquals(AsrCommandResult.IgnoredAlreadyHandled, session.close())
 
         assertEquals(1, driver.stopCount)
@@ -240,6 +253,7 @@ class DefaultAsrSessionTest {
         val driver = FakeAsrDriver()
         val session = readySession(driver)
         session.cancel(CancelReason.APP_BACKGROUNDED)
+        driver.awaitEffects { releaseCount == 1 }
 
         val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
         assertIs<SessionOutcome.Cancelled>(outcome)
@@ -251,6 +265,7 @@ class DefaultAsrSessionTest {
     private suspend fun readySession(driver: FakeAsrDriver): DefaultAsrSession {
         val session = DefaultAsrSession(AsrSessionConfig(), driver)
         assertEquals(AsrCommandResult.Accepted, session.start())
+        driver.awaitConnected()
         driver.emit(DriverSignal.Ready)
         session.awaitState { it == AsrSessionState.Ready }
         assertEquals(AsrSessionState.Ready, session.snapshot.value.state)
@@ -271,4 +286,16 @@ class DefaultAsrSessionTest {
     }
 
     private fun frame(sequence: Long): AudioFrame = AudioFrame(sequence, sequence * 20, ByteArray(640))
+
+    private suspend fun FakeAsrDriver.awaitConnected() {
+        awaitEffects { connectCount == 1 }
+    }
+
+    private suspend fun FakeAsrDriver.awaitEffects(predicate: FakeAsrDriver.() -> Boolean) {
+        withContext(Dispatchers.Default) {
+            withTimeout(5.seconds) {
+                while (!predicate()) yield()
+            }
+        }
+    }
 }

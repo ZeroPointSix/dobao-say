@@ -1,7 +1,11 @@
 package com.zeropointsix.dobaosay.asr
 
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -23,10 +27,13 @@ class DefaultAsrSession(
 ) : AsrSession {
     private val startedAtMs = clockMs()
     private val commands = Channel<Command>(Channel.UNLIMITED)
+    private val effects = Channel<DriverEffect>(Channel.UNLIMITED)
+    private val terminalCommitted = AtomicBoolean(false)
+    private val cleanupScheduled = AtomicBoolean(false)
+    private val activeEffectJob = AtomicReference<Job?>(null)
     private var eventSequence = 0L
     private var lastAudioSequence = -1L
     private var lastAudioTimestampMs = -1L
-    private var released = false
     private var connectTimeoutJob: Job? = null
     private var finalTimeoutJob: Job? = null
     private var sessionTimeoutJob: Job? = null
@@ -38,9 +45,8 @@ class DefaultAsrSession(
     override val events: SharedFlow<AsrEvent> = mutableEvents.asSharedFlow()
 
     init {
-        scope.launch {
-            for (command in commands) handle(command)
-        }
+        scope.launch { runEffectWorker() }
+        scope.launch { runActor() }
     }
 
     override suspend fun start(): AsrCommandResult = submit { Command.Start(it) }
@@ -66,6 +72,30 @@ class DefaultAsrSession(
         return reply.await()
     }
 
+    private suspend fun runActor() {
+        var current: Command? = null
+        try {
+            for (command in commands) {
+                current = command
+                handle(command)
+                current = null
+            }
+        } catch (_: CancellationException) {
+            throw CancellationException("ASR session actor cancelled")
+        } catch (_: Throwable) {
+            current?.completeIfPending(AsrCommandResult.IgnoredAlreadyHandled)
+            commitTerminal(SessionOutcome.Failed(AsrFailure.Internal("session_actor")), abort = true)
+        } finally {
+            current?.completeIfPending(AsrCommandResult.IgnoredAlreadyHandled)
+            commands.close()
+            while (true) {
+                val pending = commands.tryReceive().getOrNull() ?: break
+                pending.completeIfPending(AsrCommandResult.IgnoredAlreadyHandled)
+            }
+            effects.close()
+        }
+    }
+
     private suspend fun handle(command: Command) {
         when (command) {
             is Command.Start -> command.reply.complete(handleStart())
@@ -75,6 +105,13 @@ class DefaultAsrSession(
             is Command.Close -> command.reply.complete(handleClose())
             is Command.Signal -> handleSignal(command.signal)
             is Command.Timeout -> handleTimeout(command.phase)
+            is Command.EffectFailed -> {
+                try {
+                    handleEffectFailure(command.effect)
+                } finally {
+                    command.handled.complete(Unit)
+                }
+            }
         }
     }
 
@@ -84,11 +121,7 @@ class DefaultAsrSession(
         publish { sequence, elapsed -> AsrEvent.Connecting(sequence, elapsed) }
         scheduleTimeout(TimeoutPhase.CONNECT, config.connectTimeout)
         scheduleTimeout(TimeoutPhase.SESSION, config.sessionTimeout)
-        try {
-            driver.connect(::onDriverSignal)
-        } catch (_: Exception) {
-            commitTerminal(SessionOutcome.Failed(AsrFailure.Internal("driver_connect")), abort = false)
-        }
+        enqueueEffect(DriverEffect.Connect)
         return AsrCommandResult.Accepted
     }
 
@@ -100,11 +133,7 @@ class DefaultAsrSession(
         lastAudioSequence = frame.sequence
         lastAudioTimestampMs = frame.timestampMs
         mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Streaming)
-        try {
-            driver.sendAudio(frame)
-        } catch (_: Exception) {
-            commitTerminal(SessionOutcome.Failed(AsrFailure.Internal("driver_send_audio")), abort = false)
-        }
+        enqueueEffect(DriverEffect.SendAudio(frame))
         return AsrCommandResult.Accepted
     }
 
@@ -115,7 +144,7 @@ class DefaultAsrSession(
             -> {
                 mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Stopping(reason))
                 scheduleTimeout(TimeoutPhase.FINAL, config.stopFinalTimeout)
-                requestStopOrFail()
+                enqueueEffect(DriverEffect.RequestStop)
                 AsrCommandResult.Accepted
             }
             is AsrSessionState.Stopping,
@@ -191,7 +220,7 @@ class DefaultAsrSession(
                     mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Stopping(StopReason.VAD))
                     publish { sequence, elapsed -> AsrEvent.SpeechEnded(sequence, elapsed) }
                     scheduleTimeout(TimeoutPhase.FINAL, config.stopFinalTimeout)
-                    requestStopOrFail()
+                    enqueueEffect(DriverEffect.RequestStop)
                 }
             }
             is DriverSignal.Retrying -> publish { sequence, elapsed ->
@@ -211,6 +240,17 @@ class DefaultAsrSession(
         if (applies) {
             commitTerminal(SessionOutcome.Failed(AsrFailure.Timeout(phase)), abort = true)
         }
+    }
+
+    private suspend fun handleEffectFailure(effect: DriverEffect) {
+        if (mutableSnapshot.value.state is AsrSessionState.Closed) return
+        val code = when (effect) {
+            DriverEffect.Connect -> "driver_connect"
+            is DriverEffect.SendAudio -> "driver_send_audio"
+            DriverEffect.RequestStop -> "driver_stop"
+            is DriverEffect.Cleanup -> return
+        }
+        commitTerminal(SessionOutcome.Failed(AsrFailure.Internal(code)), abort = false)
     }
 
     private fun scheduleTimeout(phase: TimeoutPhase, duration: kotlin.time.Duration) {
@@ -238,43 +278,80 @@ class DefaultAsrSession(
         TimeoutPhase.entries.forEach(::cancelTimeout)
     }
 
-    private suspend fun requestStopOrFail() {
-        try {
-            driver.requestStop()
-        } catch (_: Exception) {
-            commitTerminal(SessionOutcome.Failed(AsrFailure.Internal("driver_stop")), abort = false)
-        }
-    }
-
     private suspend fun protocolFailure(code: String) {
         commitTerminal(SessionOutcome.Failed(AsrFailure.ProtocolViolation(code)), abort = false)
     }
 
     private suspend fun commitTerminal(outcome: SessionOutcome, abort: Boolean) {
-        if (mutableSnapshot.value.state is AsrSessionState.Closed) return
+        if (!terminalCommitted.compareAndSet(false, true)) return
         cancelAllTimeouts()
+        mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Closed(outcome))
         if (outcome is SessionOutcome.Failed) {
             publish { sequence, elapsed -> AsrEvent.Error(outcome.failure, sequence, elapsed) }
         }
-        mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Closed(outcome))
         publish { sequence, elapsed -> AsrEvent.Closed(outcome, sequence, elapsed) }
 
-        if (abort) {
-            try {
-                driver.abort()
-            } catch (_: Exception) {
-                // The terminal outcome is already committed; abort failure cannot replace it.
-            }
-        }
-        if (!released) {
-            released = true
-            try {
-                driver.release()
-            } catch (_: Exception) {
-                // Release is attempted exactly once and cannot replace the committed outcome.
-            }
+        activeEffectJob.getAndSet(null)?.cancel()
+        if (cleanupScheduled.compareAndSet(false, true)) {
+            enqueueEffect(DriverEffect.Cleanup(abort))
         }
         commands.close()
+    }
+
+    private fun enqueueEffect(effect: DriverEffect) {
+        if (effects.trySend(effect).isFailure && effect !is DriverEffect.Cleanup) {
+            commands.trySend(Command.EffectFailed(effect, CompletableDeferred()))
+        }
+    }
+
+    private suspend fun runEffectWorker() {
+        try {
+            for (effect in effects) {
+                if (terminalCommitted.get() && effect !is DriverEffect.Cleanup) continue
+                val job = scope.launch(start = CoroutineStart.LAZY) { executeEffect(effect) }
+                activeEffectJob.set(job)
+                if (terminalCommitted.get() && effect !is DriverEffect.Cleanup) {
+                    job.cancel()
+                } else {
+                    job.start()
+                }
+                job.join()
+                activeEffectJob.compareAndSet(job, null)
+            }
+        } finally {
+            activeEffectJob.getAndSet(null)?.cancel()
+        }
+    }
+
+    private suspend fun executeEffect(effect: DriverEffect) {
+        try {
+            when (effect) {
+                DriverEffect.Connect -> driver.connect(::onDriverSignal)
+                is DriverEffect.SendAudio -> driver.sendAudio(effect.frame)
+                DriverEffect.RequestStop -> driver.requestStop()
+                is DriverEffect.Cleanup -> {
+                    if (effect.abort) {
+                        try {
+                            driver.abort()
+                        } catch (_: Exception) {
+                            // The terminal outcome is already committed; abort failure cannot replace it.
+                        }
+                    }
+                    try {
+                        driver.release()
+                    } catch (_: Exception) {
+                        // Release is attempted exactly once and cannot replace the committed outcome.
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (!terminalCommitted.get()) {
+                val handled = CompletableDeferred<Unit>()
+                if (commands.trySend(Command.EffectFailed(effect, handled)).isSuccess) handled.await()
+            }
+        }
     }
 
     private fun isReadyOrStreaming(): Boolean =
@@ -301,6 +378,13 @@ class DefaultAsrSession(
         mutableEvents.emit(factory(eventSequence, (clockMs() - startedAtMs).coerceAtLeast(0)))
     }
 
+    private sealed interface DriverEffect {
+        data object Connect : DriverEffect
+        data class SendAudio(val frame: AudioFrame) : DriverEffect
+        data object RequestStop : DriverEffect
+        data class Cleanup(val abort: Boolean) : DriverEffect
+    }
+
     private sealed interface Command {
         data class Start(val reply: CompletableDeferred<AsrCommandResult>) : Command
         data class PushAudio(val frame: AudioFrame, val reply: CompletableDeferred<AsrCommandResult>) : Command
@@ -309,5 +393,23 @@ class DefaultAsrSession(
         data class Close(val reply: CompletableDeferred<AsrCommandResult>) : Command
         data class Signal(val signal: DriverSignal) : Command
         data class Timeout(val phase: TimeoutPhase) : Command
+        data class EffectFailed(
+            val effect: DriverEffect,
+            val handled: CompletableDeferred<Unit>,
+        ) : Command
+
+        fun completeIfPending(result: AsrCommandResult) {
+            when (this) {
+                is Start -> reply.complete(result)
+                is PushAudio -> reply.complete(result)
+                is Stop -> reply.complete(result)
+                is Cancel -> reply.complete(result)
+                is Close -> reply.complete(result)
+                is Signal,
+                is Timeout,
+                -> Unit
+                is EffectFailed -> handled.complete(Unit)
+            }
+        }
     }
 }

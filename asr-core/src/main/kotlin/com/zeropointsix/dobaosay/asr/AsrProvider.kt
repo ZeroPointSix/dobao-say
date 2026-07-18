@@ -8,6 +8,10 @@ interface AsrProvider {
     fun createDriver(config: AsrSessionConfig): AsrDriver
 }
 
+/**
+ * Provider-side operations are serialized by the session. Every suspending method must cooperate with
+ * coroutine cancellation so a session timeout can stop an in-flight operation before cleanup runs.
+ */
 interface AsrDriver {
     suspend fun connect(sink: suspend (DriverSignal) -> Unit)
     suspend fun sendAudio(frame: AudioFrame)
