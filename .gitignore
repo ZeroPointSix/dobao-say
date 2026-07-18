@@ -1,0 +1,35 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~
+.idea/
+.vscode/
+*.iml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Java / RE caches
+*.class
+.jadx/
+*.jobf
+
+# Duplicate root drop (canonical sample lives under originals/apk/)
+/豆包输入法.apk
+
+# Large intermediate outputs (regenerate from originals)
+workspace/decompiled/
+workspace/native/**/*.so
+workspace/extracted/full/
+workspace/extracted/sample/*.dex
+tools/bin/
+tools/downloads/
+*.log
+tmp/
+temp/
+.cache/
