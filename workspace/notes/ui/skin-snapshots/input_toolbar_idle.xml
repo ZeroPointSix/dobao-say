@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window>
+    <HorizontalLayout class_adaptive="cls_toolbar_idle_adaptive" name="toolbar_idle"
+        width="match_parent" height="match_parent">
+        <HorizontalLayout name="toolbar_icon" width="match_parent" height="match_parent" >
+            <ButtonSwitchBoard target="13" name="btn_logo" class="cls_toolbar_idle_button" text="\ue31b" />
+            <!--下面是image button的配置，发版前紧急改需求去除了显示image，代码先留着，后续如果有需求方便加回来
+                ButtonSwitchBoard target="13" name="btn_logo"
+                normalimage="file='drawable/toolbar_app_logo.png'"  pushedimage="file='drawable/toolbar_app_logo_pushed.png'" btnfixedscale="true"
+                width="30" height="match_parent" margin_decimal="0,0.2321,0,0.2321" bkcircle="true" padding="5,0,5,0"
+                key_vibrate="Function"/-->
+
+            <ButtonKey name="btn_custom_toolbar_confirm" class="cls_toolbar_idle_button" textcolor="@color/white" bkcolor="@color/toolbar_custom_confirm_button_bk" text="\ue370" visible="false"/>
+            <HorizontalLayout name="toolbar_left_container"  width_weight="1" height="match_parent" sliderenable="true" sliderstopslowdown="true">
+                <Control name="toolbar_left_spacer" height="match_parent" visible="false" />
+                <HorizontalOption name="btn_speech_bar_two" class="cls_toolbar_idle_speech_button">
+                    <Label text="\ue367" width="auto" font="fi_toolbar_button" textcolor="@color/toolbar_idle_button_text"/>
+                    <Label text="点击说话" width="auto" font="key_func" textcolor="@color/toolbar_idle_button_text" padding="0,0,5,0"/>
+                </HorizontalOption>
+                <ButtonKey name="btn_speech_bar_single" class="cls_toolbar_idle_button" text="\ue367"/>
+                <ButtonKey name="btn_toolbar_clipboard" class="cls_toolbar_idle_button" text="\ue36c" visible="true"/>
+                <ButtonKey name="btn_toolbar_translate" class="cls_toolbar_idle_button" text="\ue36f" visible="true"/>
+                <ButtonKey name="btn_toolbar_emoji" class="cls_toolbar_idle_button" text="\ue36d" visible="true"/>
+                <ButtonKey name="btn_toolbar_common_phrase" class="cls_toolbar_idle_button" text="\ue36e" visible="true"/>
+                <ButtonKey name="btn_toolbar_select_board" class="cls_toolbar_idle_button" text="\ue371" visible="true" />
+                <ButtonKey name="btn_toolbar_hans_hant" class="cls_toolbar_idle_button" text="繁" visible="true" />
+                <ButtonKey name="btn_toolbar_one_hand" class="cls_toolbar_idle_button" text="\ue386" visible="true" />
+                <ButtonKey name="btn_toolbar_handwriting_lookup" class="cls_toolbar_idle_button" text="\ue390" visible="true" />
+                <ButtonKey name="btn_toolbar_revocation" class="cls_toolbar_idle_button" text="\ue388" visible="false" />
+                <HorizontalOption name="btn_toolbar_revocation_layout" class="cls_toolbar_idle_speech_button" visible="false">
+                    <Label text="\ue388" width="auto" font="fi_toolbar_button" textcolor="@color/toolbar_idle_button_text"/>
+                    <Label text="撤销删除" width="auto" font="key_revocation_text_size" textcolor="@color/toolbar_idle_button_text" padding="0,0,5,0"/>
+                </HorizontalOption>
+                <Control name="toolbar_right_spacer" height="match_parent" visible="true" />
+            </HorizontalLayout>
+
+            <!--Control name="toolbar_spacer" height="match_parent"/-->
+            <ButtonKey name="btn_ai_entrance" class="cls_toolbar_idle_button" text="\ue33a" visible="false"/>
+            <ButtonKey name="btn_toggle_floating" class="cls_toolbar_idle_button" visible="false"/>
+            <ButtonKey name="btn_hide" class="cls_toolbar_idle_button" text="\ue34a" />
+            <Control name="red_point_of_btn_logo" width="18" height="18" rect_follow_control="btn_logo"
+                float="true" gravity="center|top" pos="24,9" bkcolor="#ffff0000" bkround="99" visible="false"/>
+
+
+
+        </HorizontalLayout>
+        <Control name="toolbar_empty" width="match_parent" height="match_parent" visible="false"/>
+    </HorizontalLayout>
+</Window>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window>
+    <VerticalLayout class_adaptive="cls_toolbar_adaptive"
+        name="toolbar_typing" width="match_parent" height="match_parent">
+        <HorizontalLayout name="container_comp" width="match_parent" height_weight="20" padding="0,3,0,0" >
+            <HorizontalLayout maxwidth="halfMaxWidth"  padding="5,0,0,0">
+                <Composition name="comp_layout" class="cls_comp_container" >
+                        <Label name="comp_half" class="cls_comp_half" />
+                        <Label name="comp_right" class="cls_comp_right" />
+                        <!-- <Control name="cursor" class="cls_comp_cursor" /> -->
+                        <Control />
+                </Composition>
+                <!-- 反馈 --> <!--临时去掉，因为UI等问题去掉。ps:了解是测试阶段使用。-->
+                <!--<ButtonKey  name="llm_error" class="cls_comp_half" padding="3,0,13,0" font="comp_font_underline" />-->
+                <!--ButtonKey name="feedback_icon" class="cls_feedback_icon"/-->
+            </HorizontalLayout>
+
+            <Control maxwidth="halfMaxWidth"/>
+        </HorizontalLayout>
+        <!--        更多候选显示时，此控件用于占位候选位置-->
+        <Control name="container_cand_hide_space" width="match_parent" height_weight="36" visible="false"/>
+
+        <HorizontalLayout name="container_cand" width="match_parent" height_weight="36">
+            <Control width_weight="4" />
+            <CandListLayout name="cand_list" class="cls_cand_list" />
+            <Control name="candidate_split" class="cls_candidate_split" />
+            <Control width_weight="3" />
+            <ButtonSwitchBoard target="12" name="btn_morecand" class="cls_btn_morecand" />
+            <ButtonReset name="btn_closecand" class="cls_btn_closecand" visible="false" />
+            <ButtonKey name="btn_speech_cand" width_weight="36" class="cls_btn_cand_voice" visible="false" />
+            <Control width_weight="4" />
+        </HorizontalLayout>
+        <Control height_weight="2" />
+    </VerticalLayout>
+</Window> 

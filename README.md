@@ -104,8 +104,9 @@ dobao-say/
 - [x] jadx / apktool 反编译（本地 `workspace/decompiled/`，gitignore）
 - [x] 加固判断：无传统 APK 壳；`libshell.so` 为输入引擎壳层（见 `reports/02-stage1-static-re.md`）
 - [x] IME 入口 / KeyboardJni / 云端 API 初图
+- [x] UI 界面结构（皮肤 DSL / 工具栏候选 / Android 叠加面板，见 `reports/03-ui-structure.md`）
 - [ ] 动态抓包与协议字段还原
-- [ ] Ghidra 级 native 伪代码
+- [ ] Ghidra 级 native 伪代码 / UI 引擎符号
 - [ ] 词库格式文档
 
 ## 快速校验

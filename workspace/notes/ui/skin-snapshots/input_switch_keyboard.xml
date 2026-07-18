@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Window>
+    <SwitchLayout name="input_switch_keyboard" userdata="board_switch" mouse="false">
+        <!-- 此部分与工具栏样式相同 -->
+        <HorizontalLayout class="cls_toolbar_bk" class_adaptive="cls_toolbar_idle_adaptive">
+            <ButtonSwitchBoard name="back_from_switch_board_view" target="13" class="cld_toolbar_close_button" text="\ue362" />
+            <Control width_weight="292" />
+        </HorizontalLayout>
+
+        <!-- 此部分与键盘相同 -->
+        <VerticalLayout width="match_parent" height="match_parent">
+            <HorizontalLayout>
+                <TileLayout class="cls_settings_bk" name="board_switch_layout">
+                    <OptionModeSwitch text="拼音9键" ficon_text="\ue31d"
+                        name="keyboard_pinyin9_item"
+                        class="cls_settings_option_mode_switch_button, cls_to_input_kbd_pinyin9" />
+                    <OptionModeSwitch text="拼音26键" ficon_text="\ue31e"
+                        name="keyboard_pinyin26_item"
+                        class="cls_settings_option_mode_switch_button, cls_to_input_kbd_pinyin26" />
+                    <OptionModeSwitch text="手写键盘" ficon_text="\ue384" name="keyboard_handwrite"
+                        class="cls_settings_option_mode_switch_button" bindtablayoutname="input_kbd_table"/>
+                    <OptionModeSwitch
+                        name="keyboard_double_spell_item"
+                        class="cls_settings_option_mode_switch_button, cls_to_input_kbd_double_spell"
+                        ficon_text="\ue382"
+                        text="双拼键盘"
+                        text_right_ficon_fontname="fi_setting_button_text_right_icon" />
+
+                </TileLayout>
+            </HorizontalLayout>
+            <Control class="cls_settings_tab_point_container" />
+        </VerticalLayout>
+    </SwitchLayout>
+</Window>

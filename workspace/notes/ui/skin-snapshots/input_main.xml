@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window caption="input_main">
+    <Include source="style.xml" adaptive="true" />
+
+    <WindowBoardView width="match_parent" height="match_parent">
+        <VerticalLayout width="match_parent" height="match_parent" class="cls_default_bk">
+
+            <InputBoardLayout name="input_kbd_table" width="match_parent" height="match_parent"
+                selectedid="2" float="true" mouse="false">
+                <Include desc="拼音26键 0" source="layout/input_kbd_pinyin26.xml" />
+                <Include desc="拼音9键 1" source="layout/input_kbd_pinyin9.xml" />
+                <Include desc="英文全键 2" source="layout/input_kbd_english26.xml" />
+                <Include desc="中文符号 3" source="layout/input_kbd_symbol.xml" />
+                <Include desc="更多符号 4" source="layout/input_kbd_more_symbol.xml" />
+                <Include desc="数字键盘 5" source="layout/input_kbd_number.xml" />
+                <Include desc="手写键盘 6" source="layout/input_kbd_bihua.xml" />
+                <Include desc="五笔全键 7" source="layout/input_kbd_wubi.xml" />
+                <Include desc="数字英文符号 8" source="layout/input_kbd_number_symbol_en.xml" />
+                <Include desc="数字中文符号 9" source="layout/input_kbd_number_symbol_cn.xml" />
+                <Include desc="数字键盘26跳转 10" source="layout/input_kbd_number_from26.xml" />
+                <Include desc="选择键盘 11" source="layout/input_switch_keyboard.xml" />
+<!--                <Include desc="更多候选 12" source="layout/input_more_cand.xml" />-->
+                <Include desc="内部设置 13" source="layout/input_settings.xml" />
+            </InputBoardLayout>
+
+<!--            &lt;!&ndash; 历史符号列表 &ndash;&gt;-->
+<!--            <SymbolContainerLayout name="symbol_container_layout"-->
+<!--                class="cls_toolbar_bk" class_adaptive="cls_toolbar_no_typing_adaptive" float="true" visible="false">-->
+<!--                <HorizontalLayout width="match_parent" height="match_parent">-->
+<!--                    <Control width_weight="4" />-->
+<!--                    <HorizontalLayout class="cls_history_symbollist" name="history_symbol_list"-->
+<!--                        width_weight="308">-->
+<!--                        <ButtonSymbol text="." class="cls_history_symbollist_button" class_adaptive="cls_cand_margin_in_keyboard_type"/>-->
+<!--                    </HorizontalLayout>-->
+
+<!--                    <HorizontalLayout width_weight="4">-->
+<!--                        <Control width_weight="1" height_weight="match_parent"-->
+<!--                            bkcolormargin="0,0.2,0,0.2"-->
+<!--                            bkcolor="@color/canditem_split" />-->
+<!--                        <Control width_weight="3" />-->
+<!--                    </HorizontalLayout>-->
+
+<!--                    <ButtonCloseSymbol class="cls_history_close_button"-->
+<!--                        class_adaptive="cls_btn_more_cand_button_adaptive"/>-->
+<!--                    <Control width_weight="4" />-->
+<!--                </HorizontalLayout>-->
+<!--            </SymbolContainerLayout>-->
+        </VerticalLayout>
+
+        <FusiyinBubbleLayout class="cls_fusiyin_bubble_container" name="fusiyin_bubble_container">
+            <ButtonChar text="." class="cls_fusiyin_bubble_button" keycode="." commitstr="." />
+        </FusiyinBubbleLayout>
+        <ButtonTouchTip text="" class="cls_touch_tip_button" name="btn_touch_tip" />
+    </WindowBoardView>
+</Window>
