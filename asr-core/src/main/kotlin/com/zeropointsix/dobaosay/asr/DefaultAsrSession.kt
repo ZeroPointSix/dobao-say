@@ -1,13 +1,10 @@
 package com.zeropointsix.dobaosay.asr
 
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -35,7 +32,7 @@ class DefaultAsrSession(
     override val events: SharedFlow<AsrEvent> = mutableEvents.asSharedFlow()
 
     init {
-        CoroutineScope(SupervisorJob() + Dispatchers.Default + ActorMarker()).launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             for (command in commands) handle(command)
         }
     }
@@ -54,8 +51,7 @@ class DefaultAsrSession(
     override suspend fun close(): AsrCommandResult = submit { Command.Close(it) }
 
     suspend fun onDriverSignal(signal: DriverSignal) {
-        val reply = CompletableDeferred<Unit>()
-        if (commands.trySend(Command.Signal(signal, reply)).isSuccess) reply.await()
+        commands.trySend(Command.Signal(signal))
     }
 
     private suspend fun submit(factory: (CompletableDeferred<AsrCommandResult>) -> Command): AsrCommandResult {
@@ -71,10 +67,7 @@ class DefaultAsrSession(
             is Command.Stop -> command.reply.complete(handleStop(command.reason))
             is Command.Cancel -> command.reply.complete(handleCancel(command.reason))
             is Command.Close -> command.reply.complete(handleClose())
-            is Command.Signal -> {
-                handleSignal(command.signal)
-                command.reply?.complete(Unit)
-            }
+            is Command.Signal -> handleSignal(command.signal)
         }
     }
 
@@ -83,13 +76,7 @@ class DefaultAsrSession(
         mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Connecting)
         publish { sequence, elapsed -> AsrEvent.Connecting(sequence, elapsed) }
         try {
-            driver.connect { signal ->
-                if (currentCoroutineContext()[ActorMarker] != null) {
-                    commands.trySend(Command.Signal(signal, null))
-                } else {
-                    onDriverSignal(signal)
-                }
-            }
+            driver.connect(::onDriverSignal)
         } catch (_: Exception) {
             commitTerminal(SessionOutcome.Failed(AsrFailure.Internal("driver_connect")), abort = false)
         }
@@ -270,10 +257,6 @@ class DefaultAsrSession(
         data class Stop(val reason: StopReason, val reply: CompletableDeferred<AsrCommandResult>) : Command
         data class Cancel(val reason: CancelReason, val reply: CompletableDeferred<AsrCommandResult>) : Command
         data class Close(val reply: CompletableDeferred<AsrCommandResult>) : Command
-        data class Signal(val signal: DriverSignal, val reply: CompletableDeferred<Unit>?) : Command
-    }
-
-    private class ActorMarker : AbstractCoroutineContextElement(ActorMarker) {
-        companion object Key : CoroutineContext.Key<ActorMarker>
+        data class Signal(val signal: DriverSignal) : Command
     }
 }

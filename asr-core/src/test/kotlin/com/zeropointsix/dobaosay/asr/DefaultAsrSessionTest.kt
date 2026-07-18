@@ -12,10 +12,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultAsrSessionTest {
@@ -31,6 +35,7 @@ class DefaultAsrSessionTest {
         assertEquals(AsrCommandResult.Accepted, session.stop())
         driver.emit(DriverSignal.Final("result-1", "utterance-1", "测试文本"))
         driver.emit(DriverSignal.Final("result-1", "utterance-1", "重复文本"))
+        session.awaitClosed()
 
         assertIs<SessionOutcome.Succeeded>((session.snapshot.value.state as AsrSessionState.Closed).outcome)
         assertEquals(1, driver.stopCount)
@@ -57,6 +62,8 @@ class DefaultAsrSessionTest {
                 },
             ).awaitAll()
         }
+        session.awaitClosed()
+        runCurrent()
 
         assertEquals(1, events.filterIsInstance<AsrEvent.Final>().size)
         assertEquals(1, events.filterIsInstance<AsrEvent.Closed>().size)
@@ -86,6 +93,8 @@ class DefaultAsrSessionTest {
                 },
             ).awaitAll()
         }
+        session.awaitClosed()
+        runCurrent()
 
         assertEquals(1, events.filterIsInstance<AsrEvent.Closed>().size)
         assertTrue(events.filterIsInstance<AsrEvent.Final>().size <= 1)
@@ -150,6 +159,8 @@ class DefaultAsrSessionTest {
 
         driver.emit(DriverSignal.SpeechEnded)
         driver.emit(DriverSignal.SpeechEnded)
+        session.awaitState { it is AsrSessionState.Stopping }
+        assertEquals(AsrCommandResult.IgnoredAlreadyHandled, session.stop())
 
         assertEquals(1, driver.stopCount)
         assertEquals(AsrSessionState.Stopping(StopReason.VAD), session.snapshot.value.state)
@@ -162,11 +173,33 @@ class DefaultAsrSessionTest {
         val session = readySession(driver)
 
         driver.emit(DriverSignal.RemoteClosed)
+        session.awaitClosed()
 
         val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
         val failure = assertIs<SessionOutcome.Failed>(outcome).failure
         assertEquals(AsrFailure.ProtocolViolation("remote_closed_before_final"), failure)
         assertEquals(1, driver.releaseCount)
+    }
+
+    @Test
+    fun `connect callback from another coroutine never deadlocks the actor`() = runTest {
+        val driver = object : AsrDriver {
+            override suspend fun connect(sink: suspend (DriverSignal) -> Unit) {
+                coroutineScope {
+                    async(Dispatchers.Default) { sink(DriverSignal.Ready) }.await()
+                }
+            }
+
+            override suspend fun sendAudio(frame: AudioFrame) = Unit
+            override suspend fun requestStop() = Unit
+            override suspend fun abort() = Unit
+            override suspend fun release() = Unit
+        }
+        val session = DefaultAsrSession(AsrSessionConfig(), driver)
+
+        assertEquals(AsrCommandResult.Accepted, withTimeout(5.seconds) { session.start() })
+        session.awaitState { it == AsrSessionState.Ready }
+        session.cancel(CancelReason.USER)
     }
 
     @Test
@@ -212,8 +245,20 @@ class DefaultAsrSessionTest {
         val session = DefaultAsrSession(AsrSessionConfig(), driver)
         assertEquals(AsrCommandResult.Accepted, session.start())
         driver.emit(DriverSignal.Ready)
+        session.awaitState { it == AsrSessionState.Ready }
         assertEquals(AsrSessionState.Ready, session.snapshot.value.state)
         return session
+    }
+
+    private suspend fun DefaultAsrSession.awaitClosed() {
+        awaitState { it is AsrSessionState.Closed }
+        close()
+    }
+
+    private suspend fun DefaultAsrSession.awaitState(predicate: (AsrSessionState) -> Boolean) {
+        withTimeout(5.seconds) {
+            snapshot.first { predicate(it.state) }
+        }
     }
 
     private fun frame(sequence: Long): AudioFrame = AudioFrame(sequence, sequence * 20, ByteArray(640))
