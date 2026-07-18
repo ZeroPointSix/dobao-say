@@ -27,7 +27,9 @@
 | 字段 | 值 | 来源 |
 |---|---|---|
 | package | `com.bytedance.android.doubaoime` | binary AndroidManifest 字符串 |
-| versionName（疑似） | `4.2.243.8-doubao` | `classes.dex` 字符串池 |
+| versionName（正式） | `1.3.15` | `aapt dump badging` |
+| versionCode | `100315010` | 同上 |
+| 内部引擎版本串（疑似） | `4.2.243.8-doubao` | `classes.dex` 字符串池 |
 | 邻近版本串 | `4.2.1-rc.8-oime`、`4.3.2-rc.13` | 同上 |
 | release_build | `2b0b44c_20260714_124829_7662229808918579238` | `assets/slardar.properties` |
 | jekins_name | `wave_ime_publish_pkg` | 同上 |

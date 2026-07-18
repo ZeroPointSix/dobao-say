@@ -101,9 +101,12 @@ dobao-say/
 - [x] 哈希与签名证书提取
 - [x] 包名/组件/so/大资源粗粒度清单
 - [x] 2026-07-18 完整性复验（见 `reports/01-upload-verification.md`）
-- [ ] 完整 apktool/jadx 反编译
-- [ ] 加固与混淆评估
-- [ ] 核心输入链路梳理
+- [x] jadx / apktool 反编译（本地 `workspace/decompiled/`，gitignore）
+- [x] 加固判断：无传统 APK 壳；`libshell.so` 为输入引擎壳层（见 `reports/02-stage1-static-re.md`）
+- [x] IME 入口 / KeyboardJni / 云端 API 初图
+- [ ] 动态抓包与协议字段还原
+- [ ] Ghidra 级 native 伪代码
+- [ ] 词库格式文档
 
 ## 快速校验
 
