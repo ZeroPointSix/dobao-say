@@ -6,6 +6,8 @@ import com.zeropointsix.dobaosay.asr.AsrSessionConfig
 import com.zeropointsix.dobaosay.asr.AudioFrame
 import com.zeropointsix.dobaosay.asr.DriverSignal
 import com.zeropointsix.dobaosay.asr.ProviderId
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 
 class FakeAsrProvider(
     private val driverFactory: () -> FakeAsrDriver = ::FakeAsrDriver,
@@ -15,36 +17,44 @@ class FakeAsrProvider(
 }
 
 class FakeAsrDriver : AsrDriver {
+    @Volatile
     private var sink: (suspend (DriverSignal) -> Unit)? = null
-    val receivedFrames = mutableListOf<AudioFrame>()
-    var connectCount = 0
-        private set
-    var stopCount = 0
-        private set
-    var abortCount = 0
-        private set
-    var releaseCount = 0
-        private set
+    val receivedFrames = Collections.synchronizedList(mutableListOf<AudioFrame>())
+    val effects = Collections.synchronizedList(mutableListOf<String>())
+    private val connects = AtomicInteger()
+    private val stops = AtomicInteger()
+    private val aborts = AtomicInteger()
+    private val releases = AtomicInteger()
+
+    val connectCount: Int get() = connects.get()
+    val stopCount: Int get() = stops.get()
+    val abortCount: Int get() = aborts.get()
+    val releaseCount: Int get() = releases.get()
 
     override suspend fun connect(sink: suspend (DriverSignal) -> Unit) {
-        connectCount += 1
+        connects.incrementAndGet()
+        effects += "connect"
         this.sink = sink
     }
 
     override suspend fun sendAudio(frame: AudioFrame) {
         receivedFrames += frame
+        effects += "push:${frame.sequence}"
     }
 
     override suspend fun requestStop() {
-        stopCount += 1
+        stops.incrementAndGet()
+        effects += "stop"
     }
 
     override suspend fun abort() {
-        abortCount += 1
+        aborts.incrementAndGet()
+        effects += "abort"
     }
 
     override suspend fun release() {
-        releaseCount += 1
+        releases.incrementAndGet()
+        effects += "release"
     }
 
     suspend fun emit(signal: DriverSignal) {
