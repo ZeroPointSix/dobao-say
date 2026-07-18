@@ -3,8 +3,10 @@ package com.zeropointsix.dobaosay.asr
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -16,6 +18,7 @@ import kotlinx.coroutines.launch
 class DefaultAsrSession(
     private val config: AsrSessionConfig,
     private val driver: AsrDriver,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val clockMs: () -> Long = System::currentTimeMillis,
 ) : AsrSession {
     private val startedAtMs = clockMs()
@@ -24,6 +27,9 @@ class DefaultAsrSession(
     private var lastAudioSequence = -1L
     private var lastAudioTimestampMs = -1L
     private var released = false
+    private var connectTimeoutJob: Job? = null
+    private var finalTimeoutJob: Job? = null
+    private var sessionTimeoutJob: Job? = null
 
     private val mutableSnapshot = MutableStateFlow(AsrSessionSnapshot())
     override val snapshot: StateFlow<AsrSessionSnapshot> = mutableSnapshot.asStateFlow()
@@ -32,7 +38,7 @@ class DefaultAsrSession(
     override val events: SharedFlow<AsrEvent> = mutableEvents.asSharedFlow()
 
     init {
-        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+        scope.launch {
             for (command in commands) handle(command)
         }
     }
@@ -68,6 +74,7 @@ class DefaultAsrSession(
             is Command.Cancel -> command.reply.complete(handleCancel(command.reason))
             is Command.Close -> command.reply.complete(handleClose())
             is Command.Signal -> handleSignal(command.signal)
+            is Command.Timeout -> handleTimeout(command.phase)
         }
     }
 
@@ -75,6 +82,8 @@ class DefaultAsrSession(
         if (mutableSnapshot.value.state != AsrSessionState.Created) return rejected("start")
         mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Connecting)
         publish { sequence, elapsed -> AsrEvent.Connecting(sequence, elapsed) }
+        scheduleTimeout(TimeoutPhase.CONNECT, config.connectTimeout)
+        scheduleTimeout(TimeoutPhase.SESSION, config.sessionTimeout)
         try {
             driver.connect(::onDriverSignal)
         } catch (_: Exception) {
@@ -105,6 +114,7 @@ class DefaultAsrSession(
             AsrSessionState.Streaming,
             -> {
                 mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Stopping(reason))
+                scheduleTimeout(TimeoutPhase.FINAL, config.stopFinalTimeout)
                 requestStopOrFail()
                 AsrCommandResult.Accepted
             }
@@ -137,6 +147,7 @@ class DefaultAsrSession(
                 if (mutableSnapshot.value.state != AsrSessionState.Connecting) {
                     protocolFailure("ready_out_of_order")
                 } else {
+                    cancelTimeout(TimeoutPhase.CONNECT)
                     mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Ready)
                     publish { sequence, elapsed -> AsrEvent.Ready(sequence, elapsed) }
                 }
@@ -166,6 +177,7 @@ class DefaultAsrSession(
                 if (!canAcceptFinal()) {
                     protocolFailure("final_out_of_order")
                 } else {
+                    cancelTimeout(TimeoutPhase.FINAL)
                     val success = SessionOutcome.Succeeded(signal.resultId, signal.text)
                     mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
                     publish { sequence, elapsed ->
@@ -178,6 +190,7 @@ class DefaultAsrSession(
                 if (isReadyOrStreaming()) {
                     mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Stopping(StopReason.VAD))
                     publish { sequence, elapsed -> AsrEvent.SpeechEnded(sequence, elapsed) }
+                    scheduleTimeout(TimeoutPhase.FINAL, config.stopFinalTimeout)
                     requestStopOrFail()
                 }
             }
@@ -187,6 +200,42 @@ class DefaultAsrSession(
             is DriverSignal.Failed -> commitTerminal(SessionOutcome.Failed(signal.failure), abort = false)
             DriverSignal.RemoteClosed -> protocolFailure("remote_closed_before_final")
         }
+    }
+
+    private suspend fun handleTimeout(phase: TimeoutPhase) {
+        val applies = when (phase) {
+            TimeoutPhase.CONNECT -> mutableSnapshot.value.state == AsrSessionState.Connecting
+            TimeoutPhase.FINAL -> mutableSnapshot.value.state is AsrSessionState.Stopping
+            TimeoutPhase.SESSION -> mutableSnapshot.value.state !is AsrSessionState.Closed
+        }
+        if (applies) {
+            commitTerminal(SessionOutcome.Failed(AsrFailure.Timeout(phase)), abort = true)
+        }
+    }
+
+    private fun scheduleTimeout(phase: TimeoutPhase, duration: kotlin.time.Duration) {
+        cancelTimeout(phase)
+        val job = scope.launch {
+            delay(duration)
+            commands.trySend(Command.Timeout(phase))
+        }
+        when (phase) {
+            TimeoutPhase.CONNECT -> connectTimeoutJob = job
+            TimeoutPhase.FINAL -> finalTimeoutJob = job
+            TimeoutPhase.SESSION -> sessionTimeoutJob = job
+        }
+    }
+
+    private fun cancelTimeout(phase: TimeoutPhase) {
+        when (phase) {
+            TimeoutPhase.CONNECT -> connectTimeoutJob.also { connectTimeoutJob = null }
+            TimeoutPhase.FINAL -> finalTimeoutJob.also { finalTimeoutJob = null }
+            TimeoutPhase.SESSION -> sessionTimeoutJob.also { sessionTimeoutJob = null }
+        }?.cancel()
+    }
+
+    private fun cancelAllTimeouts() {
+        TimeoutPhase.entries.forEach(::cancelTimeout)
     }
 
     private suspend fun requestStopOrFail() {
@@ -203,6 +252,7 @@ class DefaultAsrSession(
 
     private suspend fun commitTerminal(outcome: SessionOutcome, abort: Boolean) {
         if (mutableSnapshot.value.state is AsrSessionState.Closed) return
+        cancelAllTimeouts()
         if (outcome is SessionOutcome.Failed) {
             publish { sequence, elapsed -> AsrEvent.Error(outcome.failure, sequence, elapsed) }
         }
@@ -258,5 +308,6 @@ class DefaultAsrSession(
         data class Cancel(val reason: CancelReason, val reply: CompletableDeferred<AsrCommandResult>) : Command
         data class Close(val reply: CompletableDeferred<AsrCommandResult>) : Command
         data class Signal(val signal: DriverSignal) : Command
+        data class Timeout(val phase: TimeoutPhase) : Command
     }
 }
