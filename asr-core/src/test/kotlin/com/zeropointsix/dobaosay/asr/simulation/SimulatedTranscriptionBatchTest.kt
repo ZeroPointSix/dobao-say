@@ -7,6 +7,7 @@ import com.zeropointsix.dobaosay.asr.AsrSessionConfig
 import com.zeropointsix.dobaosay.asr.AsrSessionState
 import com.zeropointsix.dobaosay.asr.CancelReason
 import com.zeropointsix.dobaosay.asr.DefaultAsrSession
+import com.zeropointsix.dobaosay.asr.RetryDisposition
 import com.zeropointsix.dobaosay.asr.SessionOutcome
 import com.zeropointsix.dobaosay.asr.StopReason
 import com.zeropointsix.dobaosay.asr.TimeoutPhase
@@ -38,6 +39,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -154,7 +156,7 @@ class SimulatedTranscriptionBatchTest {
         assertTrue(scenarioJob.children.none(), "${spec.id}: residual session child")
 
         val state = assertIs<AsrSessionState.Closed>(session.snapshot.value.state)
-        assertScenario(spec, state.outcome, events, driver, transport.stats.value, frames.size)
+        assertScenario(spec, state.outcome, events, driver, transport.stats.value, frames)
         val result =
             ScenarioResult(
                 id = spec.id,
@@ -191,6 +193,10 @@ class SimulatedTranscriptionBatchTest {
                     if (transport.send(frame) == LoopbackSendResult.Closed) return@async
                 }
             }
+        if (spec.consumerDelay.isPositive()) {
+            assertEquals(transport.stats.value.capacity, transport.stats.value.maxQueuedFrames)
+            assertEquals(1, transport.stats.value.activeSenders, "${spec.id}: sender did not suspend")
+        }
         var consumed = 0
         while (consumed < frames.size && session.snapshot.value.state !is AsrSessionState.Closed) {
             if (spec.consumerDelay.isPositive()) delay(spec.consumerDelay)
@@ -245,11 +251,12 @@ class SimulatedTranscriptionBatchTest {
         events: List<AsrEvent>,
         driver: SimulatedTranscriptionDriver,
         stats: LoopbackStats,
-        inputFrames: Int,
+        inputFrames: List<com.zeropointsix.dobaosay.asr.AudioFrame>,
     ) {
         assertTrue(events.zipWithNext().all { (left, right) -> left.sequence < right.sequence }, "${spec.id}: sequence")
         assertEquals(1, events.count { it is AsrEvent.Closed }, "${spec.id}: Closed count")
         assertEquals(1, driver.releaseCount, "${spec.id}: release count")
+        assertEquals(1, driver.connectCount, "${spec.id}: connect count")
         assertEquals(0, driver.activeCallCount, "${spec.id}: active Driver call")
         assertEquals(0, stats.activeSenders, "${spec.id}: active sender")
         assertEquals(0, stats.queuedFrames, "${spec.id}: queued frame")
@@ -263,14 +270,16 @@ class SimulatedTranscriptionBatchTest {
             assertEquals(1, driver.abortCount)
             assertEquals(0, events.count { it is AsrEvent.Final })
             assertEquals(spec.cancelAfterFrames, driver.receivedFrames.size)
+            assertEquals(0, events.count { it is AsrEvent.Error })
             assertTrue(stats.droppedOnCloseFrames > 0, "${spec.id}: queued frames were not classified on close")
+            assertFramePrefix(inputFrames, driver.receivedFrames, spec.cancelAfterFrames)
         } else {
             when (spec.mode) {
                 SimulatedDriverMode.SUCCESS -> {
                     assertIs<SessionOutcome.Succeeded>(outcome)
                     assertTrue(events.any { it is AsrEvent.Partial }, "${spec.id}: partial missing")
                     assertEquals(1, events.count { it is AsrEvent.Final }, "${spec.id}: Final count")
-                    assertEquals(inputFrames, driver.receivedFrames.size, "${spec.id}: Driver frame count")
+                    assertFramePrefix(inputFrames, driver.receivedFrames, inputFrames.size)
                     assertEquals(1, driver.stopCount, "${spec.id}: stop count")
                     if (spec.vad) {
                         assertEquals(1, events.count { it is AsrEvent.SpeechEnded }, "${spec.id}: VAD")
@@ -282,21 +291,50 @@ class SimulatedTranscriptionBatchTest {
                     assertEquals(SessionOutcome.Failed(AsrFailure.Timeout(TimeoutPhase.CONNECT)), outcome)
                     assertEquals(1, driver.abortCount)
                     assertEquals(0, events.count { it is AsrEvent.Final })
+                    assertFramePrefix(inputFrames, driver.receivedFrames, 0)
                 }
 
                 SimulatedDriverMode.FINAL_TIMEOUT -> {
                     assertEquals(SessionOutcome.Failed(AsrFailure.Timeout(TimeoutPhase.FINAL)), outcome)
                     assertTrue(events.any { it is AsrEvent.Partial }, "${spec.id}: partial missing")
                     assertEquals(1, driver.abortCount)
+                    assertEquals(1, driver.stopCount)
                     assertEquals(0, events.count { it is AsrEvent.Final })
+                    assertFramePrefix(inputFrames, driver.receivedFrames, inputFrames.size)
                 }
 
                 SimulatedDriverMode.DRIVER_FAILED -> {
                     assertEquals(SessionOutcome.Failed(AsrFailure.NetworkUnavailable), outcome)
                     assertEquals(0, driver.abortCount)
                     assertEquals(0, events.count { it is AsrEvent.Final })
+                    assertFramePrefix(inputFrames, driver.receivedFrames, 1)
                 }
             }
+        }
+        if (outcome is SessionOutcome.Failed) {
+            val errors = events.filterIsInstance<AsrEvent.Error>()
+            val closed = events.single { it is AsrEvent.Closed }
+            assertEquals(1, errors.size, "${spec.id}: Error count")
+            assertEquals(outcome.failure, errors.single().failure)
+            assertEquals(outcome.failure.code, errors.single().failure.code)
+            assertEquals(outcome.failure.retry, errors.single().failure.retry)
+            assertEquals(RetryDisposition.Backoff, errors.single().failure.retry)
+            assertEquals(outcome.failure.toString(), errors.single().failure.toString())
+            assertTrue(errors.single().sequence < closed.sequence, "${spec.id}: Error must precede Closed")
+        }
+    }
+
+    private fun assertFramePrefix(
+        expected: List<com.zeropointsix.dobaosay.asr.AudioFrame>,
+        actual: List<com.zeropointsix.dobaosay.asr.AudioFrame>,
+        count: Int,
+    ) {
+        assertEquals(count, actual.size)
+        expected.take(count).zip(actual).forEach { (left, right) ->
+            assertEquals(left.sequence, right.sequence)
+            assertEquals(left.timestampMs, right.timestampMs)
+            assertEquals(left.format, right.format)
+            assertContentEquals(left.bytes, right.bytes)
         }
     }
 
@@ -316,14 +354,25 @@ class SimulatedTranscriptionBatchTest {
     private fun writeReport(results: List<ScenarioResult>) {
         val report = Path.of("build", "reports", "simulated-transcription", "batch.json")
         Files.createDirectories(report.parent)
-        Files.writeString(report, results.toJson())
+        val json = results.toJson()
+        Files.writeString(report, json)
         assertTrue(Files.isRegularFile(report))
+        assertTrue(json.contains("\"total\": ${results.size}"))
+        assertTrue(json.contains("\"success\": ${results.count { it.outcome == "success" }}"))
+        assertTrue(json.contains("\"failed\": ${results.count { it.outcome == "failed" }}"))
+        assertTrue(json.contains("\"cancelled\": ${results.count { it.outcome == "cancelled" }}"))
     }
 
     private fun List<ScenarioResult>.toJson(): String =
         buildString {
+            val success = this@toJson.count { it.outcome == "success" }
+            val failed = this@toJson.count { it.outcome == "failed" }
+            val cancelled = this@toJson.count { it.outcome == "cancelled" }
             append("{\n  \"schemaVersion\": 1,\n  \"simulated\": true,\n")
-            append("  \"summary\": {\"total\": 12, \"success\": 8, \"failed\": 3, \"cancelled\": 1},\n")
+            append(
+                "  \"summary\": {\"total\": ${this@toJson.size}, \"success\": $success, " +
+                    "\"failed\": $failed, \"cancelled\": $cancelled},\n",
+            )
             append("  \"scenarios\": [\n")
             this@toJson.forEachIndexed { index, result ->
                 append(result.toJsonObject())
