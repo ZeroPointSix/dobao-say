@@ -160,8 +160,9 @@ class VoiceCaptureService : Service() {
                 AsrSessionState.Ready,
                 AsrSessionState.Streaming,
                 -> {
-                    publish(VoicePhase.Stopping, "收尾中", "正在请求最终结果...")
-                    updateNotification("收尾中", "正在请求最终结果...", showStop = false)
+                    // Align with Doubao IME UX: after release, keep optimizing (三轮优化·第3轮).
+                    publish(VoicePhase.Stopping, "识别优化中", "松手后仍在优化最终文本…")
+                    updateNotification("识别优化中", "正在请求最终结果...", showStop = false)
                     session.stop(if (manual) StopReason.MANUAL else StopReason.MANUAL)
                 }
 
@@ -285,7 +286,16 @@ class VoiceCaptureService : Service() {
 
                         AsrSessionState.Ready,
                         AsrSessionState.Streaming,
-                        -> session.stop(StopReason.MANUAL)
+                        -> {
+                            publish(
+                                VoicePhase.Stopping,
+                                "识别优化中",
+                                "松手后仍在优化最终文本…",
+                                sessionId = sessionId,
+                            )
+                            updateNotification("识别优化中", "正在请求最终结果...", showStop = false)
+                            session.stop(StopReason.MANUAL)
+                        }
 
                         is AsrSessionState.Stopping,
                         is AsrSessionState.Closed,
