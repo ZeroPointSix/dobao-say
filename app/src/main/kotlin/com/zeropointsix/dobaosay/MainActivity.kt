@@ -20,9 +20,12 @@ class MainActivity : Activity() {
     private lateinit var stateText: TextView
     private lateinit var resultText: TextView
     private lateinit var recordButton: Button
+    private lateinit var copyButton: Button
 
     private var unsubscribe: (() -> Unit)? = null
     private var lastCopiedSessionId: String? = null
+    /** Last non-blank successful text the user can manually re-copy. */
+    private var lastCopyableText: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,8 +33,10 @@ class MainActivity : Activity() {
         stateText = findViewById(R.id.stateText)
         resultText = findViewById(R.id.resultText)
         recordButton = findViewById(R.id.recordButton)
+        copyButton = findViewById(R.id.copyButton)
 
         configureRecordButton()
+        configureCopyButton()
         unsubscribe = VoiceSessionBus.subscribe(::renderState)
 
         if (PermissionGate.missingPermissions(this).isEmpty()) {
@@ -50,6 +55,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         unsubscribe?.invoke()
         unsubscribe = null
+        VoiceSessionBus.holdPressed.set(false)
         super.onDestroy()
     }
 
@@ -93,6 +99,7 @@ class MainActivity : Activity() {
         recordButton.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    VoiceSessionBus.holdPressed.set(true)
                     startHoldRecording()
                     true
                 }
@@ -100,6 +107,7 @@ class MainActivity : Activity() {
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL,
                 -> {
+                    VoiceSessionBus.holdPressed.set(false)
                     finishHoldRecording()
                     true
                 }
@@ -109,6 +117,14 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun configureCopyButton() {
+        copyButton.setOnClickListener {
+            val text = copyableText() ?: return@setOnClickListener
+            writeClipboard(text, toast = true)
+        }
+        updateCopyButtonEnabled()
+    }
+
     private fun startHoldRecording() {
         PermissionGate.ensureVoicePermissions(this) {
             VoiceCaptureService.start(this)
@@ -116,6 +132,7 @@ class MainActivity : Activity() {
     }
 
     private fun finishHoldRecording() {
+        // Works even while service is still Connecting — Service cancels/stops appropriately.
         VoiceCaptureService.stop(this)
     }
 
@@ -123,18 +140,55 @@ class MainActivity : Activity() {
         runOnUiThread {
             stateText.text = state.title
             resultText.text = state.detail
-            maybeCopyFinal(state)
+            rememberCopyable(state)
+            maybeAutoCopyFinal(state)
+            updateCopyButtonEnabled()
         }
     }
 
-    private fun maybeCopyFinal(state: VoiceUiState) {
-        val text = state.finalText ?: return
+    private fun rememberCopyable(state: VoiceUiState) {
+        val text = state.finalText?.trim().orEmpty()
+        if (state.phase == VoicePhase.Succeeded && text.isNotEmpty()) {
+            lastCopyableText = text
+        }
+    }
+
+    /**
+     * Auto-copy only non-blank Succeeded finals, once per session.
+     * Cancelled / Failed / ClosedWithoutResult / blank must never reach here with copyable text.
+     */
+    private fun maybeAutoCopyFinal(state: VoiceUiState) {
         if (state.phase != VoicePhase.Succeeded) return
+        val text = state.finalText?.trim().orEmpty()
+        if (text.isEmpty()) return
         val sessionId = state.sessionId
         if (sessionId != null && sessionId == lastCopiedSessionId) return
         lastCopiedSessionId = sessionId
+        writeClipboard(text, toast = true)
+    }
+
+    private fun copyableText(): String? {
+        val current = VoiceSessionBus.latest
+        val fromCurrent =
+            current.finalText
+                ?.trim()
+                .orEmpty()
+                .takeIf { it.isNotEmpty() && current.phase == VoicePhase.Succeeded }
+        return fromCurrent ?: lastCopyableText?.takeIf { it.isNotBlank() }
+    }
+
+    private fun updateCopyButtonEnabled() {
+        copyButton.isEnabled = copyableText() != null
+    }
+
+    private fun writeClipboard(
+        text: String,
+        toast: Boolean,
+    ) {
         val clipboard = getSystemService(ClipboardManager::class.java)
-        clipboard.setPrimaryClip(ClipData.newPlainText("dobao-say", text.ifBlank { "(空结果)" }))
-        Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+        clipboard.setPrimaryClip(ClipData.newPlainText("dobao-say", text))
+        if (toast) {
+            Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+        }
     }
 }
