@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dobao_bg_start">#FFF8F1</color>
+    <color name="dobao_bg_end">#EAF2FF</color>
+    <color name="dobao_ink">#1D2433</color>
+    <color name="dobao_muted">#5D6472</color>
+    <color name="dobao_button">#1D2433</color>
+    <color name="dobao_button_pressed">#35405A</color>
+    <color name="dobao_button_text">#FFFFFF</color>
+</resources>
