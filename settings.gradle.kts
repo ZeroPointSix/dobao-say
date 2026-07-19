@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "dobao-say"
 include(":asr-core")
+include(":credential-core")
