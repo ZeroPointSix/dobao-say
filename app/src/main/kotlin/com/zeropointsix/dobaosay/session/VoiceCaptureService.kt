@@ -188,12 +188,40 @@ class VoiceCaptureService : Service() {
             AsrSessionConfig(
                 autoStopOnVad = false,
                 commitFinalImmediately = false,
-                stopFinalTimeout = 3.seconds,
+                // Doubao multi-pass optimize often needs >3s after FinishSession.
+                stopFinalTimeout = 8.seconds,
             )
+
+        // Start mic prebuffer before credential IO so first-install registration delay
+        // does not silently drop speech spoken during "连接中".
+        val prebuffer = ArrayDeque<ByteArray>(PREBUFFER_MAX_FRAMES)
+        val prebufferLock = Any()
+        micCapture?.close()
+        val earlyCapture = MicPcmCapture()
+        micCapture = earlyCapture
+        val prebufferJob =
+            serviceScope.launch(Dispatchers.IO) {
+                try {
+                    earlyCapture.start()
+                    while (isActive && !stopRequested.get()) {
+                        val bytes = earlyCapture.readFrame { !stopRequested.get() } ?: break
+                        synchronized(prebufferLock) {
+                            if (prebuffer.size >= PREBUFFER_MAX_FRAMES) {
+                                prebuffer.removeFirst()
+                            }
+                            prebuffer.addLast(bytes)
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Handshake / cancel — captureAndPush or teardown handles cleanup.
+                }
+            }
+
         val provider =
             try {
                 prepareDoubaoProvider()
             } catch (_: Exception) {
+                prebufferJob.cancel()
                 publish(VoicePhase.Failed, "错误", "豆包凭据准备失败。", sessionId = sessionId)
                 return
             }
@@ -211,6 +239,7 @@ class VoiceCaptureService : Service() {
             }
         audioFocus = focus
         if (!focus.request()) {
+            prebufferJob.cancel()
             publish(VoicePhase.Failed, "错误", "无法获取音频焦点。", sessionId = sessionId)
             session.cancel(CancelReason.USER)
             return
@@ -231,30 +260,6 @@ class VoiceCaptureService : Service() {
                 }
             }
 
-        // Start mic while connecting so speech during handshake is not lost (prebuffer).
-        val prebuffer = ArrayDeque<ByteArray>(PREBUFFER_MAX_FRAMES)
-        val prebufferLock = Any()
-        micCapture?.close()
-        val earlyCapture = MicPcmCapture()
-        micCapture = earlyCapture
-        val prebufferJob =
-            serviceScope.launch(Dispatchers.IO) {
-                try {
-                    earlyCapture.start()
-                    while (isActive && !stopRequested.get() && !ready.isCompleted) {
-                        val bytes = earlyCapture.readFrame { !stopRequested.get() && !ready.isCompleted } ?: break
-                        synchronized(prebufferLock) {
-                            if (prebuffer.size >= PREBUFFER_MAX_FRAMES) {
-                                prebuffer.removeFirst()
-                            }
-                            prebuffer.addLast(bytes)
-                        }
-                    }
-                } catch (_: Exception) {
-                    // Handshake failure / cancel — captureAndPush or teardown handles cleanup.
-                }
-            }
-
         try {
             when (val result = session.start()) {
                 AsrCommandResult.Accepted,
@@ -271,6 +276,7 @@ class VoiceCaptureService : Service() {
                 stopRequested.set(true)
             }
             val connected = ready.await()
+            // Stop filling the ring once handshake completes; captureAndPush continues reading.
             prebufferJob.cancel()
             runCatching { prebufferJob.join() }
             if (connected && !stopRequested.get()) {
