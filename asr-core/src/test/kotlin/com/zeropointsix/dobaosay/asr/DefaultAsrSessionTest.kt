@@ -360,6 +360,10 @@ class DefaultAsrSessionTest {
             driver.awaitEffects { stopCount == 1 }
             // Same utterance revised while Stopping should replace, not duplicate.
             driver.emit(DriverSignal.Final("r3", "u1", "世界。"))
+            runCurrent()
+            // PTT waits for RemoteClosed (or timeout) so multi-pass Finals can land.
+            assertIs<AsrSessionState.Stopping>(session.snapshot.value.state)
+            driver.emit(DriverSignal.RemoteClosed)
             session.awaitClosed()
 
             val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
@@ -443,6 +447,9 @@ class DefaultAsrSessionTest {
             assertEquals(AsrCommandResult.Accepted, session.stop(StopReason.MANUAL))
             driver.awaitEffects { stopCount == 1 }
             driver.emit(DriverSignal.Final("r3", "u2", "你好，世界！"))
+            runCurrent()
+            assertIs<AsrSessionState.Stopping>(session.snapshot.value.state)
+            driver.emit(DriverSignal.RemoteClosed)
             session.awaitClosed()
 
             val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
