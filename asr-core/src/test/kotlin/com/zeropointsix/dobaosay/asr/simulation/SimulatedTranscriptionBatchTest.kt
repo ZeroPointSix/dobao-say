@@ -207,7 +207,9 @@ class SimulatedTranscriptionBatchTest {
         if (session.snapshot.value.state is AsrSessionState.Closed) transport.cancel()
         sender.await()
         transport.stop()
-        if (spec.mode != SimulatedDriverMode.DRIVER_FAILED) {
+        if (spec.cancelAfterFrames != null) {
+            assertEquals(spec.cancelAfterFrames, consumed, "${spec.id}: consumed before cancel")
+        } else if (spec.mode != SimulatedDriverMode.DRIVER_FAILED) {
             assertEquals(frames.size, consumed, spec.id)
         }
         if (consumed > 0) {
@@ -252,6 +254,7 @@ class SimulatedTranscriptionBatchTest {
         assertEquals(0, stats.activeSenders, "${spec.id}: active sender")
         assertEquals(0, stats.queuedFrames, "${spec.id}: queued frame")
         assertEquals(0, stats.inDeliveryFrames, "${spec.id}: in-delivery frame")
+        assertEquals(1, stats.closeCount, "${spec.id}: close count")
         assertTrue(stats.maxQueuedFrames <= stats.capacity, "${spec.id}: capacity exceeded")
         assertConserved(stats)
 
@@ -259,6 +262,8 @@ class SimulatedTranscriptionBatchTest {
             assertEquals(SessionOutcome.Cancelled(CancelReason.USER), outcome)
             assertEquals(1, driver.abortCount)
             assertEquals(0, events.count { it is AsrEvent.Final })
+            assertEquals(spec.cancelAfterFrames, driver.receivedFrames.size)
+            assertTrue(stats.droppedOnCloseFrames > 0, "${spec.id}: queued frames were not classified on close")
         } else {
             when (spec.mode) {
                 SimulatedDriverMode.SUCCESS -> {
