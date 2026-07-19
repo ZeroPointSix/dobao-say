@@ -327,6 +327,74 @@ class DefaultAsrSessionTest {
             assertEquals(1, driver.releaseCount)
         }
 
+    @Test
+    fun `ptt mode joins mid-stream vad finals until manual stop`() =
+        runTest {
+            val driver = FakeAsrDriver()
+            val session =
+                DefaultAsrSession(
+                    AsrSessionConfig(autoStopOnVad = false, commitFinalImmediately = false),
+                    driver,
+                    clockMs = { testScheduler.currentTime },
+                )
+            val events = Collections.synchronizedList(mutableListOf<AsrEvent>())
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                session.events.collect { events += it }
+            }
+
+            assertEquals(AsrCommandResult.Accepted, session.start())
+            driver.awaitConnected()
+            driver.emit(DriverSignal.Ready)
+            assertEquals(AsrCommandResult.Accepted, session.pushAudio(frame(0)))
+            driver.emit(DriverSignal.SpeechEnded)
+            driver.emit(DriverSignal.Final("r1", "u0", "你好"))
+            runCurrent()
+            assertIs<AsrSessionState.Streaming>(session.snapshot.value.state)
+            assertEquals(0, driver.stopCount)
+
+            driver.emit(DriverSignal.Final("r2", "u1", "世界"))
+            runCurrent()
+            assertIs<AsrSessionState.Streaming>(session.snapshot.value.state)
+
+            assertEquals(AsrCommandResult.Accepted, session.stop(StopReason.MANUAL))
+            driver.awaitEffects { stopCount == 1 }
+            driver.emit(DriverSignal.Final("r3", "u2", "。"))
+            session.awaitClosed()
+
+            val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
+            assertIs<SessionOutcome.Succeeded>(outcome)
+            assertEquals("你好世界。", outcome.text)
+            assertTrue(events.filterIsInstance<AsrEvent.Final>().size >= 2)
+            assertEquals(1, driver.releaseCount)
+        }
+
+    @Test
+    fun `ptt mode succeeds from remote closed with accumulated segments`() =
+        runTest {
+            val driver = FakeAsrDriver()
+            val session =
+                DefaultAsrSession(
+                    AsrSessionConfig(autoStopOnVad = false, commitFinalImmediately = false),
+                    driver,
+                    clockMs = { testScheduler.currentTime },
+                )
+
+            assertEquals(AsrCommandResult.Accepted, session.start())
+            driver.awaitConnected()
+            driver.emit(DriverSignal.Ready)
+            assertEquals(AsrCommandResult.Accepted, session.pushAudio(frame(0)))
+            driver.emit(DriverSignal.Final("r1", "u0", "已缓存"))
+            runCurrent()
+            assertEquals(AsrCommandResult.Accepted, session.stop(StopReason.MANUAL))
+            driver.awaitEffects { stopCount == 1 }
+            driver.emit(DriverSignal.RemoteClosed)
+            session.awaitClosed()
+
+            val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
+            assertIs<SessionOutcome.Succeeded>(outcome)
+            assertEquals("已缓存", outcome.text)
+        }
+
     private suspend fun readySession(driver: FakeAsrDriver): DefaultAsrSession {
         val session = DefaultAsrSession(AsrSessionConfig(), driver)
         assertEquals(AsrCommandResult.Accepted, session.start())
