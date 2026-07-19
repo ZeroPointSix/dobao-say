@@ -37,6 +37,8 @@ class DefaultAsrSession(
     private var connectTimeoutJob: Job? = null
     private var finalTimeoutJob: Job? = null
     private var sessionTimeoutJob: Job? = null
+    /** VAD-finalized utterance texts keyed by utteranceId (PTT / multi-segment mode). */
+    private val segmentsByUtterance = LinkedHashMap<String, String>()
 
     private val mutableSnapshot = MutableStateFlow(AsrSessionSnapshot())
     override val snapshot: StateFlow<AsrSessionSnapshot> = mutableSnapshot.asStateFlow()
@@ -252,20 +254,15 @@ class DefaultAsrSession(
                 if (!canAcceptFinal()) {
                     protocolFailure("final_out_of_order")
                 } else {
-                    cancelTimeout(TimeoutPhase.FINAL)
-                    val success = SessionOutcome.Succeeded(signal.resultId, signal.text)
-                    mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
-                    publish { sequence, elapsed ->
-                        AsrEvent.Final(signal.resultId, signal.utteranceId, signal.text, sequence, elapsed)
-                    }
-                    commitTerminal(success, abort = false)
+                    handleFinal(signal)
                 }
             }
 
             DriverSignal.SpeechEnded -> {
-                if (isReadyOrStreaming()) {
+                if (!isReadyOrStreaming()) return
+                publish { sequence, elapsed -> AsrEvent.SpeechEnded(sequence, elapsed) }
+                if (config.autoStopOnVad) {
                     mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Stopping(StopReason.VAD))
-                    publish { sequence, elapsed -> AsrEvent.SpeechEnded(sequence, elapsed) }
                     scheduleTimeout(TimeoutPhase.FINAL, config.stopFinalTimeout)
                     enqueueEffect(DriverEffect.RequestStop)
                 }
@@ -282,10 +279,115 @@ class DefaultAsrSession(
             }
 
             DriverSignal.RemoteClosed -> {
-                protocolFailure("remote_closed_before_final")
+                handleRemoteClosed()
             }
         }
     }
+
+    private suspend fun handleFinal(signal: DriverSignal.Final) {
+        val trimmed = signal.text.trim()
+        val stopping = mutableSnapshot.value.state is AsrSessionState.Stopping
+        val joined = rememberSegment(signal.utteranceId, trimmed, stopping = stopping)
+        mutableSnapshot.value = mutableSnapshot.value.copy(partialText = joined)
+        publish { sequence, elapsed ->
+            AsrEvent.Final(signal.resultId, signal.utteranceId, joined, sequence, elapsed)
+        }
+
+        // PTT / multi-pass optimize: while Stopping, keep absorbing Finals (IME 2nd/3rd pass)
+        // and only commit on RemoteClosed or FINAL timeout — never freeze on the first Final.
+        if (config.commitFinalImmediately) {
+            cancelTimeout(TimeoutPhase.FINAL)
+            val success = SessionOutcome.Succeeded(signal.resultId, joined)
+            mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
+            commitTerminal(success, abort = false)
+        }
+    }
+
+    private suspend fun handleRemoteClosed() {
+        val state = mutableSnapshot.value.state
+        if (state is AsrSessionState.Stopping && !config.commitFinalImmediately) {
+            cancelTimeout(TimeoutPhase.FINAL)
+            // Never promote interim partialText to success — only confirmed VAD finals.
+            val text = joinedTranscript()
+            if (text.isNotEmpty()) {
+                val success = SessionOutcome.Succeeded("remote-closed", text)
+                mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
+                commitTerminal(success, abort = false)
+            } else {
+                commitTerminal(SessionOutcome.ClosedWithoutResult, abort = false)
+            }
+            return
+        }
+        protocolFailure("remote_closed_before_final")
+    }
+
+    /**
+     * Store/replace a VAD segment by utteranceId. While Stopping, a longer server rewrite that
+     * subsumes the accumulated text replaces the whole map (IME round-3 optimize).
+     */
+    private fun rememberSegment(
+        utteranceId: String,
+        text: String,
+        stopping: Boolean,
+    ): String {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return joinedTranscript()
+
+        val accumulated = joinedTranscript()
+        if (stopping && accumulated.isNotEmpty() && isFullRewrite(trimmed, accumulated)) {
+            segmentsByUtterance.clear()
+            segmentsByUtterance[utteranceId] = trimmed
+            return trimmed
+        }
+
+        segmentsByUtterance[utteranceId] = trimmed
+        return joinedTranscript()
+    }
+
+    private fun isFullRewrite(
+        candidate: String,
+        accumulated: String,
+    ): Boolean {
+        if (candidate.length < accumulated.length) return false
+        if (candidate == accumulated || candidate.startsWith(accumulated)) return true
+        // IME round-3 optimize often inserts/changes punctuation ("你好世界" → "你好，世界！").
+        val normCandidate = normalizeForRewriteCompare(candidate)
+        val normAccumulated = normalizeForRewriteCompare(accumulated)
+        if (normAccumulated.isEmpty()) return false
+        if (normCandidate == normAccumulated || normCandidate.startsWith(normAccumulated)) return true
+        val head = normAccumulated.take(minOf(normAccumulated.length, 8))
+        return head.isNotEmpty() && normCandidate.contains(head)
+    }
+
+    private fun normalizeForRewriteCompare(text: String): String =
+        text.filter { it.isLetterOrDigit() }
+
+    private fun joinedTranscript(): String {
+        val parts = segmentsByUtterance.values.toList()
+        if (parts.isEmpty()) return ""
+        val builder = StringBuilder(parts.first())
+        for (i in 1 until parts.size) {
+            val prev = parts[i - 1]
+            val next = parts[i]
+            if (needsSpaceBetween(prev, next)) {
+                builder.append(' ')
+            }
+            builder.append(next)
+        }
+        return builder.toString()
+    }
+
+    private fun needsSpaceBetween(
+        left: String,
+        right: String,
+    ): Boolean {
+        val leftCh = left.lastOrNull() ?: return false
+        val rightCh = right.firstOrNull() ?: return false
+        return leftCh.isAsciiLetterOrDigit() && rightCh.isAsciiLetterOrDigit()
+    }
+
+    private fun Char.isAsciiLetterOrDigit(): Boolean =
+        this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
 
     private suspend fun handleTimeout(phase: TimeoutPhase) {
         val applies =

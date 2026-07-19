@@ -18,6 +18,17 @@ data class AsrSessionConfig(
     val connectTimeout: Duration = 10.seconds,
     val stopFinalTimeout: Duration = 10.seconds,
     val sessionTimeout: Duration = 5.minutes,
+    /**
+     * When true (default), server [DriverSignal.SpeechEnded] auto-stops the session.
+     * Push-to-talk clients should set false — Doubao IME VAD finals are mid-stream
+     * segment boundaries, not end-of-recording (see gfreezy/DoubaoASR + Node realtime).
+     */
+    val autoStopOnVad: Boolean = true,
+    /**
+     * When true (default), the first [DriverSignal.Final] commits a terminal Succeeded.
+     * Push-to-talk should set false and join multiple VAD segment finals until manual stop.
+     */
+    val commitFinalImmediately: Boolean = true,
 ) {
     init {
         require(connectTimeout.isPositive()) { "Connect timeout must be positive" }
