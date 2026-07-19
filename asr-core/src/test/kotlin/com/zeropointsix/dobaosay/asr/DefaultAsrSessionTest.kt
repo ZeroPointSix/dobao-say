@@ -358,7 +358,8 @@ class DefaultAsrSessionTest {
 
             assertEquals(AsrCommandResult.Accepted, session.stop(StopReason.MANUAL))
             driver.awaitEffects { stopCount == 1 }
-            driver.emit(DriverSignal.Final("r3", "u2", "。"))
+            // Same utterance revised while Stopping should replace, not duplicate.
+            driver.emit(DriverSignal.Final("r3", "u1", "世界。"))
             session.awaitClosed()
 
             val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
@@ -393,6 +394,60 @@ class DefaultAsrSessionTest {
             val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
             assertIs<SessionOutcome.Succeeded>(outcome)
             assertEquals("已缓存", outcome.text)
+        }
+
+    @Test
+    fun `ptt mode remote closed without finals is empty not partial success`() =
+        runTest {
+            val driver = FakeAsrDriver()
+            val session =
+                DefaultAsrSession(
+                    AsrSessionConfig(autoStopOnVad = false, commitFinalImmediately = false),
+                    driver,
+                    clockMs = { testScheduler.currentTime },
+                )
+
+            assertEquals(AsrCommandResult.Accepted, session.start())
+            driver.awaitConnected()
+            driver.emit(DriverSignal.Ready)
+            assertEquals(AsrCommandResult.Accepted, session.pushAudio(frame(0)))
+            driver.emit(DriverSignal.Partial("u0", "临时草稿", 1))
+            runCurrent()
+            assertEquals(AsrCommandResult.Accepted, session.stop(StopReason.MANUAL))
+            driver.awaitEffects { stopCount == 1 }
+            driver.emit(DriverSignal.RemoteClosed)
+            session.awaitClosed()
+
+            val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
+            assertIs<SessionOutcome.ClosedWithoutResult>(outcome)
+        }
+
+    @Test
+    fun `ptt mode stopping full rewrite replaces accumulated text`() =
+        runTest {
+            val driver = FakeAsrDriver()
+            val session =
+                DefaultAsrSession(
+                    AsrSessionConfig(autoStopOnVad = false, commitFinalImmediately = false),
+                    driver,
+                    clockMs = { testScheduler.currentTime },
+                )
+
+            assertEquals(AsrCommandResult.Accepted, session.start())
+            driver.awaitConnected()
+            driver.emit(DriverSignal.Ready)
+            assertEquals(AsrCommandResult.Accepted, session.pushAudio(frame(0)))
+            driver.emit(DriverSignal.Final("r1", "u0", "你好"))
+            driver.emit(DriverSignal.Final("r2", "u1", "世界"))
+            runCurrent()
+            assertEquals(AsrCommandResult.Accepted, session.stop(StopReason.MANUAL))
+            driver.awaitEffects { stopCount == 1 }
+            driver.emit(DriverSignal.Final("r3", "u2", "你好，世界！"))
+            session.awaitClosed()
+
+            val outcome = (session.snapshot.value.state as AsrSessionState.Closed).outcome
+            assertIs<SessionOutcome.Succeeded>(outcome)
+            assertEquals("你好，世界！", outcome.text)
         }
 
     private suspend fun readySession(driver: FakeAsrDriver): DefaultAsrSession {
