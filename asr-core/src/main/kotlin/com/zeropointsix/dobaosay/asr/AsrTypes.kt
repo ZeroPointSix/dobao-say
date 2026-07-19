@@ -85,8 +85,7 @@ class AudioFrame(
 
     fun copyBytes(): ByteArray = pcmBytes.copyOf()
 
-    override fun toString(): String =
-        "AudioFrame(sequence=$sequence, timestampMs=$timestampMs, byteCount=$byteCount, format=$format)"
+    override fun toString(): String = "AudioFrame(sequence=$sequence, timestampMs=$timestampMs, byteCount=$byteCount)"
 }
 
 enum class StopReason { MANUAL, VAD }
