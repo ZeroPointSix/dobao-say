@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.selects.select
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
-import kotlin.time.Duration.ZERO
 
 sealed interface LoopbackSendResult {
     data object Accepted : LoopbackSendResult
@@ -40,7 +39,7 @@ data class LoopbackStats(
  */
 class InMemoryLoopbackTransport(
     private val capacity: Int,
-    private val deliveryDelay: Duration = ZERO,
+    private val deliveryDelay: Duration = Duration.ZERO,
 ) : AutoCloseable {
     private val frames: Channel<AudioFrame>
     private val permits: Channel<Unit>
