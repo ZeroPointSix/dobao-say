@@ -19,6 +19,8 @@ import com.zeropointsix.dobaosay.asr.DefaultAsrSession
 import com.zeropointsix.dobaosay.asr.SessionOutcome
 import com.zeropointsix.dobaosay.asr.StopReason
 import com.zeropointsix.dobaosay.doubao.DoubaoAsrProvider
+import com.zeropointsix.dobaosay.doubao.DoubaoProviderConfig
+import com.zeropointsix.dobaosay.infra.AppCredentialStore
 import com.zeropointsix.dobaosay.infra.AudioFocusController
 import com.zeropointsix.dobaosay.infra.MicPcmCapture
 import com.zeropointsix.dobaosay.infra.PermissionGate
@@ -64,13 +66,17 @@ class VoiceCaptureService : Service() {
         when (intent?.action) {
             ACTION_START -> startSession()
             ACTION_STOP -> {
+                // Always mark stop so a late-starting session / connecting session aborts.
+                stopRequested.set(true)
                 if (sessionActive.get()) {
                     requestStop(manual = true)
                 } else {
+                    // Finger released before session became active — avoid orphan start.
                     stopSelf(startId)
                 }
             }
             ACTION_CANCEL -> {
+                stopRequested.set(true)
                 if (sessionActive.get()) {
                     requestCancel()
                 } else {
@@ -112,6 +118,17 @@ class VoiceCaptureService : Service() {
         stopRequested.set(false)
         val sessionId = UUID.randomUUID().toString()
         activeSessionId = sessionId
+        // Finger already up (ACTION_UP while START was still queued / connecting).
+        if (!VoiceSessionBus.holdPressed.get()) {
+            // startForegroundService requires startForeground before stopSelf.
+            promoteToForeground("已取消", "松开过快，未开始录音。")
+            publish(VoicePhase.Cancelled, "已取消", "松开过快，未开始录音。", sessionId = sessionId)
+            stopForegroundCompat()
+            sessionActive.set(false)
+            activeSessionId = null
+            stopSelfSafely()
+            return
+        }
         promoteToForeground("连接中", "正在连接豆包 ASR...")
         publish(VoicePhase.Connecting, "连接中", "正在连接豆包 ASR...", sessionId = sessionId)
 
@@ -165,7 +182,13 @@ class VoiceCaptureService : Service() {
 
     private suspend fun runAsrSession(sessionId: String) {
         val sessionConfig = AsrSessionConfig()
-        val provider = DoubaoAsrProvider()
+        val provider =
+            try {
+                prepareDoubaoProvider()
+            } catch (_: Exception) {
+                publish(VoicePhase.Failed, "错误", "豆包凭据准备失败。", sessionId = sessionId)
+                return
+            }
         val session = DefaultAsrSession(sessionConfig, provider.createDriver(sessionConfig), serviceScope)
         currentSession = session
         val ready = CompletableDeferred<Boolean>()
@@ -212,13 +235,28 @@ class VoiceCaptureService : Service() {
                 }
             }
 
+            if (!VoiceSessionBus.holdPressed.get()) {
+                stopRequested.set(true)
+            }
             if (ready.await() && !stopRequested.get()) {
                 captureAndPush(session, sessionId)
             }
 
             if (session.snapshot.value.state !is AsrSessionState.Closed) {
-                if (stopRequested.get()) {
-                    session.stop(StopReason.MANUAL)
+                if (stopRequested.get() || !VoiceSessionBus.holdPressed.get()) {
+                    when (session.snapshot.value.state) {
+                        AsrSessionState.Created,
+                        AsrSessionState.Connecting,
+                        -> session.cancel(CancelReason.USER)
+
+                        AsrSessionState.Ready,
+                        AsrSessionState.Streaming,
+                        -> session.stop(StopReason.MANUAL)
+
+                        is AsrSessionState.Stopping,
+                        is AsrSessionState.Closed,
+                        -> Unit
+                    }
                 } else {
                     session.close()
                 }
@@ -230,6 +268,24 @@ class VoiceCaptureService : Service() {
             eventJob.cancel()
             currentSession = null
         }
+    }
+
+    /**
+     * Load persisted Doubao credentials, ensure device/token via provider-doubao,
+     * then save the resolved credentials back to internal storage.
+     *
+     * Mirrors [com.zeropointsix.dobaosay.doubao] CLI persistence so the driver
+     * reuses an existing device instead of registering on every session.
+     */
+    private suspend fun prepareDoubaoProvider(): DoubaoAsrProvider {
+        val store = AppCredentialStore(this)
+        val loaded = withContext(Dispatchers.IO) { store.load() }
+        val seedConfig = DoubaoProviderConfig(credentials = loaded)
+        val ensured = seedConfig.deviceClient().ensureCredentials(seedConfig)
+        withContext(Dispatchers.IO) { store.save(ensured) }
+        return DoubaoAsrProvider(
+            seedConfig.copy(credentials = ensured, token = ensured.token),
+        )
     }
 
     private suspend fun captureAndPush(
@@ -297,15 +353,7 @@ class VoiceCaptureService : Service() {
                 publish(VoicePhase.Recognizing, "识别中", text, sessionId = sessionId)
             }
 
-            is AsrEvent.Final -> {
-                publish(
-                    VoicePhase.Succeeded,
-                    "最终文本已复制",
-                    event.text.ifBlank { "(空结果)" },
-                    finalText = event.text,
-                    sessionId = sessionId,
-                )
-            }
+            is AsrEvent.Final -> publishFinalText(event.text, sessionId)
 
             is AsrEvent.SpeechEnded -> {
                 publish(VoicePhase.Stopping, "收尾中", "语音结束，正在请求最终结果。", sessionId = sessionId)
@@ -331,23 +379,17 @@ class VoiceCaptureService : Service() {
         sessionId: String,
     ) {
         when (outcome) {
-            is SessionOutcome.Succeeded -> {
-                publish(
-                    VoicePhase.Succeeded,
-                    "最终文本已复制",
-                    outcome.text.ifBlank { "(空结果)" },
-                    finalText = outcome.text,
-                    sessionId = sessionId,
-                )
-            }
+            is SessionOutcome.Succeeded -> publishFinalText(outcome.text, sessionId)
 
             is SessionOutcome.Failed -> publishFailure(outcome.failure, sessionId)
             is SessionOutcome.Cancelled -> {
-                publish(VoicePhase.Cancelled, "空闲", "本次录音已取消。", sessionId = sessionId)
+                // No finalText — Activity must not auto-copy or toast success.
+                publish(VoicePhase.Cancelled, "已取消", "本次录音已取消，未写入剪贴板。", sessionId = sessionId)
             }
 
             SessionOutcome.ClosedWithoutResult -> {
-                publish(VoicePhase.Idle, "空闲", "本次录音未产生结果。", sessionId = sessionId)
+                // No finalText — not a copyable success.
+                publish(VoicePhase.Idle, "空结果", "本次录音未产生可复制文本。", sessionId = sessionId)
             }
         }
     }
@@ -356,8 +398,39 @@ class VoiceCaptureService : Service() {
         failure: AsrFailure,
         sessionId: String?,
     ) {
+        // Failed must never carry finalText so Activity won't auto-copy.
         publish(VoicePhase.Failed, "错误", "ASR 失败：${failure.code}", sessionId = sessionId)
         updateNotification("错误", "ASR 失败：${failure.code}", showStop = false)
+    }
+
+    /**
+     * Non-blank finals are Succeeded + finalText (auto-copyable).
+     * Blank finals are Idle/"空结果" with no finalText — never a pseudo-success.
+     */
+    private fun publishFinalText(
+        text: String,
+        sessionId: String,
+    ) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) {
+            publish(
+                VoicePhase.Idle,
+                "空结果",
+                "识别结束但没有得到文本，未写入剪贴板。",
+                finalText = null,
+                sessionId = sessionId,
+            )
+            updateNotification("空结果", "没有可复制的文本", showStop = false)
+            return
+        }
+        publish(
+            VoicePhase.Succeeded,
+            "识别成功",
+            trimmed,
+            finalText = trimmed,
+            sessionId = sessionId,
+        )
+        updateNotification("识别成功", "最终文本已就绪", showStop = false)
     }
 
     private fun publish(
