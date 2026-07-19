@@ -23,7 +23,15 @@ class SecretBytes private constructor(bytes: ByteArray) : AutoCloseable {
     val size: Int
         get() = synchronized(owned) { ensureOpen().size }
 
-    internal fun copyForOperation(): ByteArray = synchronized(owned) { ensureOpen().copyOf() }
+    /** Supplies a temporary copy and wipes it when [block] completes. */
+    suspend fun <T> useBytes(block: suspend (ByteArray) -> T): T {
+        val temporary = synchronized(owned) { ensureOpen().copyOf() }
+        return try {
+            block(temporary)
+        } finally {
+            temporary.fill(0)
+        }
+    }
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
@@ -95,7 +103,15 @@ class ProtectedPayload private constructor(bytes: ByteArray) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val owned = bytes.copyOf()
 
-    internal fun copyForOperation(): ByteArray = synchronized(owned) { ensureOpen().copyOf() }
+    /** Supplies a temporary copy and wipes it when [block] completes. */
+    suspend fun <T> useBytes(block: suspend (ByteArray) -> T): T {
+        val temporary = synchronized(owned) { ensureOpen().copyOf() }
+        return try {
+            block(temporary)
+        } finally {
+            temporary.fill(0)
+        }
+    }
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {

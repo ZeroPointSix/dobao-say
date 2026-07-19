@@ -7,8 +7,8 @@ internal class TestProtector : CredentialProtector {
     var sealUnavailable = false
     var openUnavailable = false
     var corruptOnOpen = false
-    var throwOnSeal: Throwable? = null
-    var throwOnOpen: Throwable? = null
+    var throwOnSeal: Exception? = null
+    var throwOnOpen: Exception? = null
     var sealEntered: CompletableDeferred<Unit>? = null
     var sealGate: CompletableDeferred<Unit>? = null
 
@@ -17,11 +17,8 @@ internal class TestProtector : CredentialProtector {
         sealGate?.await()
         throwOnSeal?.let { throw it }
         if (sealUnavailable) return SealResult.Unavailable(CredentialErrorCode.PROTECTOR_UNAVAILABLE)
-        val plain = secret.copyForOperation()
-        return try {
+        return secret.useBytes { plain ->
             SealResult.Sealed(ProtectedPayload.copyOf(transform(plain)))
-        } finally {
-            plain.fill(0)
         }
     }
 
@@ -29,11 +26,8 @@ internal class TestProtector : CredentialProtector {
         throwOnOpen?.let { throw it }
         if (openUnavailable) return OpenResult.Unavailable(CredentialErrorCode.PROTECTOR_UNAVAILABLE)
         if (corruptOnOpen) return OpenResult.Corrupt
-        val sealed = payload.copyForOperation()
-        return try {
+        return payload.useBytes { sealed ->
             OpenResult.Opened(SecretBytes.copyOf(transform(sealed)))
-        } finally {
-            sealed.fill(0)
         }
     }
 
@@ -81,8 +75,7 @@ internal class InMemorySealedCredentialStore : SealedCredentialStore {
         writeGate?.await()
         throwOnWrite?.let { throw it }
         if (failWrites) return StoreWriteResult.Unavailable(CredentialErrorCode.STORE_UNAVAILABLE)
-        val temporary = payload.copyForOperation()
-        return try {
+        return payload.useBytes { temporary ->
             synchronized(lock) {
                 val current = entries[key]
                 if (current?.revision != expectedRevision) {
@@ -93,8 +86,6 @@ internal class InMemorySealedCredentialStore : SealedCredentialStore {
                     StoreWriteResult.Applied(revision)
                 }
             }
-        } finally {
-            temporary.fill(0)
         }
     }
 

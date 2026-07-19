@@ -80,7 +80,7 @@ class CredentialVaultTest {
         val store = InMemorySealedCredentialStore()
         val protector = TestProtector()
         val vault = vault(store, protector)
-        val first = write(vault)
+        val first = assertIs<CredentialWriteResult.Written>(write(vault))
 
         protector.sealUnavailable = true
         assertEquals(
@@ -102,7 +102,7 @@ class CredentialVaultTest {
     @Test
     fun `revision conflict is observable and does not overwrite current value`() = runTest {
         val vault = vault()
-        val first = write(vault)
+        val first = assertIs<CredentialWriteResult.Written>(write(vault))
         val second = assertIs<CredentialWriteResult.Written>(
             write(vault, bytes = byteArrayOf(2), condition = WriteCondition.IfRevision(first.revision)),
         )
@@ -177,7 +177,7 @@ class CredentialVaultTest {
     fun `cancelling before store commit preserves old version`() = runTest {
         val store = InMemorySealedCredentialStore()
         val vault = vault(store = store)
-        val first = write(vault)
+        val first = assertIs<CredentialWriteResult.Written>(write(vault))
         val entered = CompletableDeferred<Unit>()
         val gate = CompletableDeferred<Unit>()
         store.writeEntered = entered
@@ -200,6 +200,40 @@ class CredentialVaultTest {
         listOf("", "Upper", "space key", "a/route", "a".repeat(65)).forEach {
             assertFailsWith<IllegalArgumentException> { CredentialKey.of(it) }
         }
+    }
+
+    @Test
+    fun `public scoped byte access wipes temporary arrays`() = runTest {
+        val secret = SecretBytes.copyOf(syntheticSecret())
+        val payload = ProtectedPayload.copyOf(byteArrayOf(4, 5, 6))
+        lateinit var secretTemporary: ByteArray
+        lateinit var payloadTemporary: ByteArray
+
+        secret.useBytes { secretTemporary = it }
+        payload.useBytes { payloadTemporary = it }
+
+        assertTrue(secretTemporary.all { it == 0.toByte() })
+        assertTrue(payloadTemporary.all { it == 0.toByte() })
+        assertTrue(SecretBytes::class.java.methods.any { it.name == "useBytes" })
+        assertTrue(ProtectedPayload::class.java.methods.any { it.name == "useBytes" })
+        secret.close()
+        payload.close()
+    }
+
+    @Test
+    fun `throwing diagnostics never changes committed business results`() = runTest {
+        val diagnostics = CredentialDiagnostics { throw IllegalStateException("observer failed") }
+        val vault = vault(diagnostics = diagnostics)
+
+        val written = assertIs<CredentialWriteResult.Written>(write(vault))
+        val available = assertIs<CredentialReadResult.Available>(vault.read(key))
+        assertContentEquals(syntheticSecret(), available.lease.use { it.useBytes { bytes -> bytes.copyOf() } })
+        assertTrue(written.revision > 0)
+        assertSame(CredentialDeleteResult.Deleted, vault.delete(key))
+        assertSame(CredentialDeleteResult.AlreadyMissing, vault.delete(key))
+        write(vault)
+        assertSame(CredentialClearResult.Cleared, vault.clear())
+        assertSame(CredentialReadResult.Missing, vault.read(key))
     }
 
     private fun vault(

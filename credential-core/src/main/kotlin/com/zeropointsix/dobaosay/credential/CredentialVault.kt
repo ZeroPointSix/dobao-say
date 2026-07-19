@@ -77,12 +77,12 @@ class DefaultCredentialVault(
         ) {
             when (val stored = store.read(key)) {
                 StoreReadResult.Missing -> {
-                    diagnostics.record(CredentialDiagnosticCode.READ_MISSING)
+                    diagnose(CredentialDiagnosticCode.READ_MISSING)
                     CredentialReadResult.Missing
                 }
 
                 is StoreReadResult.Unavailable -> {
-                    diagnostics.record(CredentialDiagnosticCode.READ_UNAVAILABLE)
+                    diagnose(CredentialDiagnosticCode.READ_UNAVAILABLE)
                     CredentialReadResult.Unavailable(stored.code.safeStoreCode())
                 }
 
@@ -99,16 +99,12 @@ class DefaultCredentialVault(
         safely(
             unavailable = { CredentialWriteResult.Unavailable(it) },
         ) {
-            val temporary = secret.copyForOperation()
-            val sealed =
-                try {
-                    SecretBytes.copyOf(temporary).use { operationSecret -> protector.seal(operationSecret) }
-                } finally {
-                    temporary.fill(0)
-                }
+            val sealed = secret.useBytes { temporary ->
+                SecretBytes.copyOf(temporary).use { operationSecret -> protector.seal(operationSecret) }
+            }
             when (sealed) {
                 is SealResult.Unavailable -> {
-                    diagnostics.record(CredentialDiagnosticCode.WRITE_UNAVAILABLE)
+                    diagnose(CredentialDiagnosticCode.WRITE_UNAVAILABLE)
                     CredentialWriteResult.Unavailable(sealed.code.safeProtectorCode())
                 }
 
@@ -121,17 +117,17 @@ class DefaultCredentialVault(
                             }
                         when (val result = store.compareAndSet(key, expected, expiresAt, payload)) {
                             is StoreWriteResult.Applied -> {
-                                diagnostics.record(CredentialDiagnosticCode.WRITE_APPLIED)
+                                diagnose(CredentialDiagnosticCode.WRITE_APPLIED)
                                 CredentialWriteResult.Written(result.revision)
                             }
 
                             is StoreWriteResult.Conflict -> {
-                                diagnostics.record(CredentialDiagnosticCode.WRITE_CONFLICT)
+                                diagnose(CredentialDiagnosticCode.WRITE_CONFLICT)
                                 CredentialWriteResult.Conflict(result.currentRevision)
                             }
 
                             is StoreWriteResult.Unavailable -> {
-                                diagnostics.record(CredentialDiagnosticCode.WRITE_UNAVAILABLE)
+                                diagnose(CredentialDiagnosticCode.WRITE_UNAVAILABLE)
                                 CredentialWriteResult.Unavailable(result.code.safeStoreCode())
                             }
                         }
@@ -145,17 +141,17 @@ class DefaultCredentialVault(
         ) {
             when (val result = store.delete(key)) {
                 StoreDeleteResult.Deleted -> {
-                    diagnostics.record(CredentialDiagnosticCode.DELETE_APPLIED)
+                    diagnose(CredentialDiagnosticCode.DELETE_APPLIED)
                     CredentialDeleteResult.Deleted
                 }
 
                 StoreDeleteResult.Missing -> {
-                    diagnostics.record(CredentialDiagnosticCode.DELETE_MISSING)
+                    diagnose(CredentialDiagnosticCode.DELETE_MISSING)
                     CredentialDeleteResult.AlreadyMissing
                 }
 
                 is StoreDeleteResult.Unavailable -> {
-                    diagnostics.record(CredentialDiagnosticCode.DELETE_UNAVAILABLE)
+                    diagnose(CredentialDiagnosticCode.DELETE_UNAVAILABLE)
                     CredentialDeleteResult.Unavailable(result.code.safeStoreCode())
                 }
             }
@@ -167,12 +163,12 @@ class DefaultCredentialVault(
         ) {
             when (val result = store.clear()) {
                 StoreClearResult.Cleared -> {
-                    diagnostics.record(CredentialDiagnosticCode.CLEAR_APPLIED)
+                    diagnose(CredentialDiagnosticCode.CLEAR_APPLIED)
                     CredentialClearResult.Cleared
                 }
 
                 is StoreClearResult.Unavailable -> {
-                    diagnostics.record(CredentialDiagnosticCode.CLEAR_UNAVAILABLE)
+                    diagnose(CredentialDiagnosticCode.CLEAR_UNAVAILABLE)
                     CredentialClearResult.Unavailable(result.code.safeStoreCode())
                 }
             }
@@ -181,29 +177,26 @@ class DefaultCredentialVault(
     private suspend fun readFound(stored: StoredCredential): CredentialReadResult =
         stored.use {
             if (stored.metadata.expiresAt?.let { it <= clock.instant() } == true) {
-                diagnostics.record(CredentialDiagnosticCode.READ_EXPIRED)
+                diagnose(CredentialDiagnosticCode.READ_EXPIRED)
                 return@use CredentialReadResult.Expired(stored.metadata)
             }
 
             when (val opened = protector.open(stored.payload)) {
                 OpenResult.Corrupt -> {
-                    diagnostics.record(CredentialDiagnosticCode.READ_CORRUPT)
+                    diagnose(CredentialDiagnosticCode.READ_CORRUPT)
                     CredentialReadResult.Corrupt(stored.metadata)
                 }
 
                 is OpenResult.Unavailable -> {
-                    diagnostics.record(CredentialDiagnosticCode.READ_UNAVAILABLE)
+                    diagnose(CredentialDiagnosticCode.READ_UNAVAILABLE)
                     CredentialReadResult.Unavailable(opened.code.safeProtectorCode())
                 }
 
                 is OpenResult.Opened ->
                     opened.secret.use { secret ->
-                        val temporary = secret.copyForOperation()
-                        try {
-                            diagnostics.record(CredentialDiagnosticCode.READ_AVAILABLE)
+                        secret.useBytes { temporary ->
+                            diagnose(CredentialDiagnosticCode.READ_AVAILABLE)
                             CredentialReadResult.Available(SecretLease(temporary, stored.metadata))
-                        } finally {
-                            temporary.fill(0)
                         }
                     }
             }
@@ -216,12 +209,20 @@ class DefaultCredentialVault(
         try {
             block()
         } catch (cancelled: CancellationException) {
-            diagnostics.record(CredentialDiagnosticCode.OPERATION_CANCELLED)
+            diagnose(CredentialDiagnosticCode.OPERATION_CANCELLED)
             throw cancelled
-        } catch (_: Throwable) {
-            diagnostics.record(CredentialDiagnosticCode.INTERNAL_FAILURE)
+        } catch (_: Exception) {
+            diagnose(CredentialDiagnosticCode.INTERNAL_FAILURE)
             unavailable(CredentialErrorCode.INTERNAL_FAILURE)
         }
+
+    private fun diagnose(code: CredentialDiagnosticCode) {
+        try {
+            diagnostics.record(code)
+        } catch (_: Exception) {
+            // Diagnostics are best-effort observers and never affect vault results or commits.
+        }
+    }
 
     private fun CredentialErrorCode.safeStoreCode(): CredentialErrorCode =
         if (this == CredentialErrorCode.STORE_UNAVAILABLE) this else CredentialErrorCode.INTERNAL_FAILURE
