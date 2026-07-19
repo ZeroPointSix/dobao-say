@@ -236,6 +236,53 @@ class DefaultAsrSessionTest {
         }
 
     @Test
+    fun `partial while connecting promotes ready and keeps later ready idempotent`() =
+        runTest {
+            val driver = FakeAsrDriver()
+            val session = DefaultAsrSession(AsrSessionConfig(), driver, clockMs = { testScheduler.currentTime })
+            val events = Collections.synchronizedList(mutableListOf<AsrEvent>())
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                session.events.collect { events += it }
+            }
+
+            assertEquals(AsrCommandResult.Accepted, session.start())
+            driver.awaitConnected()
+            driver.emit(DriverSignal.Partial("utterance-1", "中间", 1))
+            session.awaitState { it == AsrSessionState.Streaming }
+            driver.emit(DriverSignal.Ready)
+            runCurrent()
+
+            assertEquals(AsrSessionState.Streaming, session.snapshot.value.state)
+            assertEquals("中间", session.snapshot.value.partialText)
+            assertEquals(1, events.filterIsInstance<AsrEvent.Ready>().size)
+            val partial = events.filterIsInstance<AsrEvent.Partial>().single()
+            assertEquals("中间", partial.text)
+            session.cancel(CancelReason.USER)
+        }
+
+    @Test
+    fun `partial while stopping updates partial without protocol failure`() =
+        runTest {
+            val driver = FakeAsrDriver()
+            val session = readySession(driver)
+
+            assertEquals(AsrCommandResult.Accepted, session.pushAudio(frame(0)))
+            assertEquals(AsrCommandResult.Accepted, session.stop())
+            driver.awaitEffects { stopCount == 1 }
+            val partialEvent =
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    session.events.first { it is AsrEvent.Partial } as AsrEvent.Partial
+                }
+            driver.emit(DriverSignal.Partial("utterance-1", "停止中间", 1))
+            val partial = partialEvent.await()
+
+            assertEquals(AsrSessionState.Stopping(StopReason.MANUAL), session.snapshot.value.state)
+            assertEquals("停止中间", session.snapshot.value.partialText)
+            assertEquals("停止中间", partial.text)
+            session.cancel(CancelReason.USER)
+        }
+
+    @Test
     fun `stop and close are idempotent`() =
         runTest {
             val driver = FakeAsrDriver()

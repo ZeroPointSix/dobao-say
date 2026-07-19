@@ -37,14 +37,25 @@ Wrapper 脚本和 JAR 来自 Gradle 官方 `v9.5.0` 标签；JAR 在提交前按
 
 CI 与本地使用同一命令。CI 使用的 GitHub Actions 固定到完整 commit SHA，避免可变标签漂移。
 
-## Android 决策暂缓
+## Android PoC 基线
 
-当前仓库没有 Android Application 模块，因此：
+当前仓库包含 ZER-102 最小 Android PoC：
 
-- `com.zeropointsix.dobaosay` 只是 JVM group/namespace，不是已确认的 Android `applicationId`；
-- Android `applicationId`、`namespace`、`minSdk`、`targetSdk`、`compileSdk` 尚未决定；
-- 当前基线不能构建 Debug APK，也不声称满足 Android 真机验收；
-- Android SDK 与应用模块由后续 Android 特化任务基于产品和设备证据决定。
+- 模块：`:app`；
+- `applicationId` / `namespace`：`com.zeropointsix.dobaosay`（PoC 冻结）；
+- `minSdk` / `targetSdk` / `compileSdk`：`26` / `35` / `35`；
+- Android Gradle Plugin：`9.1.0`，使用 AGP 9 内置 Kotlin 支持；
+- UI：原生 View XML 单屏单按钮，不引入 Compose / AndroidX；
+- ASR 会话：`DefaultAsrSession` + `DoubaoAsrProvider`。
+
+Android SDK 不写入 `local.properties`。本地构建需通过 `ANDROID_HOME` / `ANDROID_SDK_ROOT`
+指向已安装 SDK，再执行：
+
+```bash
+./gradlew --no-daemon --stacktrace :app:assembleDebug
+```
+
+详细运行行为、限制和 APK 路径见 [Android PoC](android-poc.md)。
 
 ## 依赖锁定与校验
 

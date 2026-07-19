@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    application
     id("org.jmailen.kotlinter")
 }
 
@@ -14,12 +15,19 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":asr-core"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("io.github.jaredmdobson:concentus:1.0.2")
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
 
     testImplementation(kotlin("test"))
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.13.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.13.4")
+}
+
+application {
+    mainClass.set("com.zeropointsix.dobaosay.doubao.DoubaoCliKt")
 }
 
 tasks.test {

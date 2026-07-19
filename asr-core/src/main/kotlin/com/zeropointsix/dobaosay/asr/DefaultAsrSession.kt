@@ -197,16 +197,27 @@ class DefaultAsrSession(
         if (mutableSnapshot.value.state is AsrSessionState.Closed) return
         when (signal) {
             DriverSignal.Ready -> {
-                if (mutableSnapshot.value.state != AsrSessionState.Connecting) {
-                    protocolFailure("ready_out_of_order")
-                } else {
-                    cancelTimeout(TimeoutPhase.CONNECT)
-                    mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Ready)
-                    publish { sequence, elapsed -> AsrEvent.Ready(sequence, elapsed) }
+                when (mutableSnapshot.value.state) {
+                    AsrSessionState.Connecting -> {
+                        cancelTimeout(TimeoutPhase.CONNECT)
+                        mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Ready)
+                        publish { sequence, elapsed -> AsrEvent.Ready(sequence, elapsed) }
+                    }
+
+                    AsrSessionState.Ready,
+                    AsrSessionState.Streaming,
+                    -> {
+                        // Idempotent: early Partial may have already promoted Connecting → Ready.
+                    }
+
+                    else -> {
+                        protocolFailure("ready_out_of_order")
+                    }
                 }
             }
 
             DriverSignal.SpeechStarted -> {
+                ensureReadyForStreamingSignals()
                 if (!isReadyOrStreaming()) {
                     protocolFailure("speech_start_out_of_order")
                 } else {
@@ -216,14 +227,20 @@ class DefaultAsrSession(
             }
 
             is DriverSignal.Partial -> {
-                if (!isReadyOrStreaming()) {
+                ensureReadyForStreamingSignals()
+                val state = mutableSnapshot.value.state
+                if (!isReadyOrStreaming() && state !is AsrSessionState.Stopping) {
                     protocolFailure("partial_out_of_order")
                 } else {
-                    mutableSnapshot.value =
-                        mutableSnapshot.value.copy(
-                            state = AsrSessionState.Streaming,
-                            partialText = signal.text,
-                        )
+                    if (state !is AsrSessionState.Stopping) {
+                        mutableSnapshot.value =
+                            mutableSnapshot.value.copy(
+                                state = AsrSessionState.Streaming,
+                                partialText = signal.text,
+                            )
+                    } else {
+                        mutableSnapshot.value = mutableSnapshot.value.copy(partialText = signal.text)
+                    }
                     publish { sequence, elapsed ->
                         AsrEvent.Partial(signal.utteranceId, signal.text, signal.revision, sequence, elapsed)
                     }
@@ -231,6 +248,7 @@ class DefaultAsrSession(
             }
 
             is DriverSignal.Final -> {
+                ensureReadyForStreamingSignals()
                 if (!canAcceptFinal()) {
                     protocolFailure("final_out_of_order")
                 } else {
@@ -413,6 +431,19 @@ class DefaultAsrSession(
     private fun isReadyOrStreaming(): Boolean =
         mutableSnapshot.value.state == AsrSessionState.Ready ||
             mutableSnapshot.value.state == AsrSessionState.Streaming
+
+    /**
+     * Providers may enqueue Ready and the first Partial from the same connect() call. Because the
+     * session actor is serial, an early Partial can be observed while state is still Connecting.
+     * Promote Connecting → Ready (and emit Ready) so the handshake collectors and streaming signals
+     * stay consistent.
+     */
+    private suspend fun ensureReadyForStreamingSignals() {
+        if (mutableSnapshot.value.state != AsrSessionState.Connecting) return
+        cancelTimeout(TimeoutPhase.CONNECT)
+        mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Ready)
+        publish { sequence, elapsed -> AsrEvent.Ready(sequence, elapsed) }
+    }
 
     private fun canAcceptFinal(): Boolean = isReadyOrStreaming() || mutableSnapshot.value.state is AsrSessionState.Stopping
 

@@ -7,6 +7,7 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 plugins {
+    id("com.android.application") version "9.1.0" apply false
     kotlin("jvm") version "2.4.10" apply false
     id("org.jmailen.kotlinter") version "5.6.0" apply false
 }
