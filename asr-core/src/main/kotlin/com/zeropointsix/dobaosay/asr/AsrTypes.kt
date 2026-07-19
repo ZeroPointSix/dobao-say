@@ -57,19 +57,36 @@ enum class AudioEncoding(
     PCM_16_LE(2),
 }
 
+/**
+ * Immutable audio value. Both constructor input and every [bytes] read are copied so callers cannot
+ * mutate frame contents after construction.
+ *
+ * [timestampMs] is elapsed monotonic time relative to the producing stream, never wall-clock time.
+ */
 class AudioFrame(
     val sequence: Long,
     val timestampMs: Long,
     bytes: ByteArray,
+    val format: AudioFormat = AudioFormat(),
 ) {
-    val bytes: ByteArray = bytes.copyOf()
+    private val pcmBytes = bytes.copyOf()
+
+    val bytes: ByteArray
+        get() = pcmBytes.copyOf()
+
+    val byteCount: Int
+        get() = pcmBytes.size
 
     init {
         require(sequence >= 0) { "Audio sequence must be non-negative" }
         require(timestampMs >= 0) { "Audio timestamp must be non-negative" }
+        require(bytes.isNotEmpty()) { "Audio bytes must not be empty" }
     }
 
-    override fun toString(): String = "AudioFrame(sequence=$sequence, timestampMs=$timestampMs, byteCount=${bytes.size})"
+    fun copyBytes(): ByteArray = pcmBytes.copyOf()
+
+    override fun toString(): String =
+        "AudioFrame(sequence=$sequence, timestampMs=$timestampMs, byteCount=$byteCount, format=$format)"
 }
 
 enum class StopReason { MANUAL, VAD }
