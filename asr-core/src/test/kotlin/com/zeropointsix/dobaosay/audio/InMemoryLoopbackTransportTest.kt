@@ -70,6 +70,8 @@ class InMemoryLoopbackTransportTest {
 
             assertEquals(0, transport.stats.value.inDeliveryFrames)
             assertEquals(0, transport.stats.value.receivedFrames)
+            assertEquals(1, transport.stats.value.droppedOnCancelFrames)
+            assertConserved(transport.stats.value)
             assertEquals(LoopbackSendResult.Accepted, transport.send(frame(1)))
             transport.close()
         }
@@ -94,7 +96,9 @@ class InMemoryLoopbackTransportTest {
             assertEquals(0, stats.inDeliveryFrames)
             assertEquals(1, stats.receivedFrames)
             assertEquals(0, stats.droppedOnCloseFrames)
+            assertEquals(0, stats.droppedOnCancelFrames)
             assertEquals(1, stats.closeCount)
+            assertConserved(stats)
             assertTrue(transport.isClosed())
         }
 
@@ -122,6 +126,17 @@ class InMemoryLoopbackTransportTest {
         kotlin.test.assertFailsWith<IllegalArgumentException> {
             InMemoryLoopbackTransport(capacity = 1, deliveryDelay = -1.seconds)
         }
+    }
+
+    private fun assertConserved(stats: LoopbackStats) {
+        assertEquals(
+            stats.acceptedFrames,
+            stats.queuedFrames.toLong() +
+                stats.inDeliveryFrames +
+                stats.receivedFrames +
+                stats.droppedOnCloseFrames +
+                stats.droppedOnCancelFrames,
+        )
     }
 
     private fun frame(sequence: Long): AudioFrame = AudioFrame(sequence, sequence * 20, ByteArray(640))
