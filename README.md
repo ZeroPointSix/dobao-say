@@ -22,7 +22,7 @@
 ./gradlew --no-daemon --stacktrace --warning-mode=fail clean check
 ```
 
-该单一入口会编译后端核心、运行单元测试、将 Kotlin 编译警告视为错误，并执行稳定的基础格式检查。Wrapper 固定 Gradle 9.5.0，下载分发包时会校验 SHA-256。
+该单一入口会编译后端核心、运行单元测试、将 Kotlin 编译警告视为错误，并通过 Kotlinter 5.6.0（ktlint）执行 Kotlin 静态格式检查。仓库同时保留基础空白检查，但不把它冒充静态分析。Wrapper 固定 Gradle 9.5.0，下载分发包时会校验 SHA-256。
 
 详细版本、命名空间与暂缓决策见 [构建基线](docs/build-baseline.md)。
 

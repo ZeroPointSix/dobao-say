@@ -32,7 +32,8 @@ Wrapper 脚本和 JAR 来自 Gradle 官方 `v9.5.0` 标签；JAR 在提交前按
 
 - Kotlin/JVM 编译，且编译警告视为错误；
 - JUnit Platform 单元测试；
-- `kotlinQualityCheck`，检查 Kotlin 源码与 Kotlin 构建脚本的 Tab、行尾空白和文件末尾换行。
+- Kotlinter 5.6.0（ktlint）的 `lintKotlin`，执行真正的 Kotlin 静态格式检查；
+- `kotlinQualityCheck`，只作为基础空白检查，检查 Kotlin 源码与 Kotlin 构建脚本的 Tab、行尾空白和文件末尾换行，不代表静态分析。
 
 CI 与本地使用同一命令。CI 使用的 GitHub Actions 固定到完整 commit SHA，避免可变标签漂移。
 
@@ -47,4 +48,6 @@ CI 与本地使用同一命令。CI 使用的 GitHub Actions 固定到完整 com
 
 ## 依赖锁定与校验
 
-本次没有手工创建 dependency lock 或 verification metadata。原因是当前执行环境不能完成一次可信的完整依赖解析；手工拼写这些生成物会制造虚假的可复现性。后续应在可信 JDK 17 环境中通过 Gradle 官方命令生成、审查并提交，然后将其纳入同一 `check` 入口。
+所有项目配置启用 Gradle dependency locking。提交的 `gradle.lockfile` 由 Gradle 在 JDK 17 环境实际解析 `check` 所需配置后生成，不手工猜测版本。
+
+`gradle/verification-metadata.xml` 同样由 Gradle 对实际解析产物生成，至少记录 SHA-256。生成后必须人工审查组件来源、算法与条目结构；普通 `check` 在依赖校验失败时直接失败。新增或升级依赖时，必须用 Gradle 官方 `--write-locks` 与 `--write-verification-metadata sha256` 重新生成并审查差异，禁止手工填写未知校验值。

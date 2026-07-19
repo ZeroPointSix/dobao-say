@@ -8,6 +8,13 @@ import org.gradle.api.tasks.TaskAction
 
 plugins {
     kotlin("jvm") version "2.4.10" apply false
+    id("org.jmailen.kotlinter") version "5.6.0" apply false
+}
+
+allprojects {
+    dependencyLocking {
+        lockAllConfigurations()
+    }
 }
 
 abstract class KotlinQualityCheck : DefaultTask() {
