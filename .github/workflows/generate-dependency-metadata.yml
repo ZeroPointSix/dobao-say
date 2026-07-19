@@ -19,6 +19,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.0.0
         with:
           cache-provider: basic
+      - name: 使用固定 Kotlinter 格式化源码
+        run: ./gradlew --no-daemon --stacktrace --warning-mode=fail --write-locks --write-verification-metadata sha256 formatKotlin
       - name: 由实际解析生成锁与校验元数据
         run: ./gradlew --no-daemon --stacktrace --warning-mode=fail --write-locks --write-verification-metadata sha256 clean check
       - name: 上传待审查元数据
@@ -29,3 +31,4 @@ jobs:
           path: |
             **/gradle.lockfile
             gradle/verification-metadata.xml
+            asr-core/src/**/*.kt
