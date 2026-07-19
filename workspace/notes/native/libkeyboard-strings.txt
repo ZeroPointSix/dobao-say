@@ -1,0 +1,250 @@
+$../../../../../../../engine/oime_engine/third_party/protobuf-v3.21.12/src/google/protobuf/stubs/strutil.cc
+AddModifyPairNerResponse: asr_user_ner_dict.Dec failed
+AddModifyPairNerResponse: asr_user_ner_dict.Dec failed, sys_dict.Zhuyin failed
+AddModifyPairNerResponse: asr_user_ner_dict.Inc failed
+AddModifyPairNerResponse: asr_user_ner_dict.Inc failed, sys_dict.Zhuyin failed
+AddModifyPairNerResponse: sys_dict or user_dict or asr_user_ner_dict not loaded
+AddNerResponse: sys_dict or user_dict or asr_user_ner_dict not loaded
+Android (5873035 based on r365631b) clang version 9.0.7 (https://android.googlesource.com/toolchain/llvm-project 888a58ee8d6fb1670e1728abe3c37806249dfbcf) (based on LLVM 9.0.7svn)
+Android (7019983 based on r365631c3) clang version 9.0.9 (https://android.googlesource.com/toolchain/llvm-project a2a1e703c0edb03ba29944e529ccbf457742737b) (based on LLVM 9.0.9svn)
+Android (8490178, based on r450784d) clang version 14.0.6 (https://android.googlesource.com/toolchain/llvm-project 4c603efb0cca074e9238af8b4106c30add4418f6)
+ a protocol buffer. Use the 'bytes' type if you intend to send raw bytes. 
+A protocol message was rejected because it was too big (more than 
+arc_predict
+asr_char_error_dict.dat
+[ASR-Flow]-State prepare immediately stop asr, keyboard_behavior = {}, control_name = {}
+[ASR-Flow][UIState][C++] keyboard_behavior = {}
+asr_ngram_dict.dat
+AsrUserCorrectDict::Add failed, dict not load
+AsrUserCorrectDict::Add failed, fuzzy not match
+AsrUserCorrectDict::Add failed, fuzzy search failed
+AsrUserCorrectDict::Add failed, IsValidIndex return failed
+AsrUserCorrectDict::Add failed, length not equal
+AsrUserCorrectDict::Add failed, malloc failed
+AsrUserCorrectDict::Add failed, original_word == modify_word
+AsrUserCorrectDict::Add failed, param is empty
+AsrUserCorrectDict::Add failed, write key failed
+AsrUserCorrectDict::Add failed, zhuyin failed
+asr_user_correct_dict.dat
+AsrUserCorrectDict::Load failed, sys dict not load
+asr_user_ner_dict.dat
+AsrUserNerDict::Dec failed: dict not loaded
+AsrUserNerDict::Dec failed: invalid attribute
+AsrUserNerDict::Dec failed: invalid param
+AsrUserNerDict::Dec failed: not found
+AsrUserNerDict::Inc failed: dict not loaded
+AsrUserNerDict::Inc failed: insert failed
+AsrUserNerDict::Inc failed: invalid param
+AsrUserNerDict::Search failed: dict not loaded
+AsrUserNerDict::Search failed: invalid param
+[AssociateRefresh] Clear call ClearRequest from InputModel::Clear path, clear_context={}, clear_request={}
+[AssociateRefresh] -=-=CloudModel: cloud word association network timeout. cost = {}
+[AssociateRefresh] -=-=CloudModel: cloud word association response can't parse.
+[AssociateRefresh] -=-=CloudModel: cloud word association server error code={}
+[AssociateRefresh] -=-=CloudModel: DelayProcessCloudWordAssociationResponse cancel (not last request)
+[AssociateRefresh] -=-=CloudModel: OnCloudWordAssociationPrefetchCallback cancel
+[AssociateRefresh] -=-=CloudModel: OnCloudWordAssociationPrefetchCallback resp=[{}]
+[AssociateRefresh] -=-=CloudModel: OnCloudWordAssociationUpdateCallback cancel (not last request) request_id={} request_series={}
+[AssociateRefresh][DeleteAssociate] -=-=CloudModel: OnCloudWordAssociationUpdateCallback kCloudTimerPeriod={} response_size={}
+[AssociateRefresh][DeleteAssociate] -=-=CloudModel: request success, now call OnAssociate is_from_delete_or_select_associate_={}
+[AssociateRefresh][UpdateSelection] call InputModel::Associate(true)
+btn_stretch_keyboard
+[ButtonBackspace] Continue Deletion Triggered keyboard_behavior = {}
+Byte size calculation and serialization were inconsistent.  This may indicate a bug in protocol buffers or it may be caused by concurrent modification of 
+ bytes).  To increase the limit (or to disable these warnings), see CodedInputStream::SetTotalBytesLimit() in third_party/protobuf/io/coded_stream.h.
+Cannot write binary dictionary.
+can_show_restore_default_keyboard_tip: {}
+clear clipboard Jni_ClearClipboardHistory
+ClearNerDict
+ClearNerDict: asr_user_ner_dict not loaded
+ClearUserDict
+ClearUsrDict
+ClearUsrDicts
+ClipboardDict::Add failed, IsValidIndex return failed
+ClipboardDict::Add failed, malloc failed
+ClipboardDict::Add failed, write key failed
+clipboard_dict.dat
+cloud_dict
+[clouddict] Apply skip for not idle
+[clouddict] Apply type = {}
+[clouddict] BeginRequst()
+[clouddict] can RequestThread
+[clouddict] can't read file: {}
+[clouddict] can't write file: {}
+[clouddict] check update task  Conf_.update_timestamp={}, Conf_.request_interval={}, curtimestamp={}
+[clouddict] close tmp file faild: {}
+[clouddict] CreateUpdateTask() 01
+[clouddict] CreateUpdateTask() 02
+[clouddict] CreateUpdateTask() 03
+[clouddict] CreateUpdateTask(), setting_minutes = {}
+[clouddict] delete tmp file error: {}
+[clouddict] DestoryUpdateTask()
+[clouddict] DestoryUpdateTask() error
+[clouddict] download error: type = {}, http_code = {}
+[clouddict] engine task error: type={}
+[clouddict] enginetask: type = {}, status = {}
+[clouddict] event = {}
+[clouddict] fsync tmp file faild: {}
+[clouddict] get file size faild: tmp_target = {}
+[clouddict] GetLocalFile: target = {}
+[clouddict] invalid md5: type = {}
+[clouddict] invalid retponse data: type = {}
+[clouddict] invalid target path: type = {}
+[clouddict] invalid thread param
+[clouddict] open tmp file faild: {}
+[clouddict] Parse hot_status = {}, sensi_update_status = {}, sensi_status = {}, type = {}
+[clouddict] rename tmp file faild: {} -> {}
+[clouddict] RequestThread reentry
+[clouddict] RequestThread skip: is_valid=false
+[clouddict] requst: {}
+[clouddict] setting_minutes: {}
+[clouddict] skip is_valid
+[clouddict] skip update dict, input status is not idle
+[clouddict] timer callback, is_valid = {}
+[clouddict] timestamp: {}
+cloud_dict_update
+[clouddict] write dict with tmp file: type = {}, target = {}, tmp = {}
+[clouddict] write tmp file faild: {}, write_size = {}, expect_size = {}
+cloud_hot_dict
+-=-=CloudModel: 
+CloudModel: Associate feedback queue loaded from {}. Size: {}
+CloudModel: Associate feedback queue persisted to {}
+-=-=CloudModel: cloud_prefetch_ctx_regulator_response_data_={}
+-=-=CloudModel: cloud request network timeout. cost = {}
+-=-=CloudModel: cloud_request_->Request check
+-=-=CloudModel: cloud sentence association network timeout.
+-=-=CloudModel:CloudWordAssociationPrefetch ENV unexpect!
+-=-=CloudModel: DelayProcessCloudPrefetchCtxRegulatorResponse cancel
+-=-=CloudModel: DelayProcessCloudPrefetchCtxRegulatorResponse network timeout.
+-=-=CloudModel: DelayProcessCloudPrefetchCtxRegulatorResponse response can't parse.
+-=-=CloudModel: DelayProcessCloudResponse cancel
+-=-=CloudModel: DelayProcessCloudSentenceAssoResponse cancel
+-=-=CloudModel: DelayProcessCloudWordAssociationPrefetchResponse arrive
+-=-=CloudModel: DelayProcessCloudWordAssociationPrefetchResponse cancel
+-=-=CloudModel: DelayProcessCloudWordAssociationPrefetchResponse code = {}, response_data_={}
+-=-=CloudModel: DelayProcessCloudWordAssociationPrefetchResponse network timeout. cost = {}
+-=-=CloudModel: DelayProcessCloudWordAssociationPrefetchResponse ParseWordAssociationResponse text_before_cursor = {}
+-=-=CloudModel: DelayProcessCloudWordAssociationPrefetchResponse server error
+CloudModel: Exception while loading associate feedback queue: {}
+CloudModel: Exception while persisting associate feedback queue: {}
+CloudModel: Failed to open file for writing: {}
+CloudModel: Failed to parse JSON from {}. Errors: {}. Deleting corrupt file.
+-=-=CloudModel: http error
+-=-=CloudModel: http status: {} response empty? {}
+-=-=CloudModel: input is {}
+-=-=CloudModel: MakeWordAssociationPrefetchRequest not send request
+-=-=CloudModel: MakeWordAssociationPrefetchRequest send request [{}]
+-=-=CloudModel: MakeWordAssociationPrefetchRequest tbc=[{}], tac=[{}], appname=[{}]
+-=-=CloudModel: OnAssociationUpdateCallback cancel
+-=-=CloudModel: OnCloudPrefetchCtxRegulatorCallback cancel
+-=-=CloudModel: OnCloudSentenceAssoUpdateCallback cancel
+-=-=CloudModel: OnCloudUpdateCallback cancel
+-=-=CloudModel: parse error
+-=-=CloudModel: ParseWordAssociationResponse can't parse.
+-=-=CloudModel: PostCloudEvent: 
+CloudModel: PostCloudPrefetchCtxRegulatorEvent_TRACK_EVENT {}
+-=-=CloudModel: PostCloudWordAssociationEvent: 
+-=-=CloudModel: PostCloudWordAssociationPrefetchEvent: 
+-=-=CloudModel prefetch_ctx_regulator_server_used_time_={}
+-=-=CloudModel: server error
+-=-=CloudModel: UpdateCloudCand
+-=-=CloudModel: UpdateCloudRequestResponse
+-=-=CloudModel: UpdateLLMCand context = {}, pinyin = {}, raw_comp_unconvert = {}, now-piyin = {}, response ={}, error={}, is_session_result={}
+-=-=CloudModel: UpdateLLMError error = {}
+cloud_sent_dict
+cls_keyboard_button_add_custom_symbol
+cls_keyboard_button_backslash_adaptive
+cls_keyboard_button_comma_textpadding
+cls_keyboard_button_encomma_textpadding
+cls_keyboard_button_enperiod_textpadding
+cls_keyboard_button_period_textpadding
+com/bytedance/android/doubaoime/KeyboardJni
+com/bytedance/android/doubaoime/KeyboardJni$ChatHistory
+com/bytedance/android/doubaoime/KeyboardJni$SelectionUpdatedParams
+com/bytedance/android/doubaoime/KeyboardJni$StartInputViewParams
+com/bytedance/android/input/keyboard/KeyboardView
+com/bytedance/android/input/keyboard/word_segmentation/data/WordSegmentationData
+com/bytedance/android/input/keyboard/word_segmentation/data/WordSegmentationDetailData
+commit_dict_type
+commit_not_sysdict
+common_phrase_dict.dat
+CommonPhraseDictPack should init with sys_dict
+contactDictBatchClear
+ContactDictPack does not call Init function
+).  Contact the program author for an update.  If you compiled the program yourself, make sure that your headers are from the same version of Protocol Buffers as your link-time library.  (Version verification failed in "
+ConvertByCloudHotWordDict
+ConvertByCommonPhraseDict
+ConvertByContactDict
+ConvertByExtensionDict
+ConvertByFieldDict
+ConvertByIncorrectSyllableDict
+ConvertByNameAfterAtDict
+ConvertByPredict
+ConvertByPredictEng
+ConvertBySysBigDict
+ConvertBySysDict
+ConvertByUserDict
+ConvertByUsrEnhanceDict
+[CorrectionManager] ReplaceTextByCursorOffset in input_box_screen_model
+createCloudDictUpdateTask
+crnn_model.onnx
+crnn_model_vocab.txt
+current keyboard height: {}
+Current keyboard is not pinyin, do not make request
+CustomDictBase::AsyncAfterMergeTrimHead failed, CheckDict failed
+CustomDictBase::AsyncAfterMergeTrimHead failed, memory failed
+CustomDictBase::AsyncMerge failed, memory {}
+CustomDictBase::AsyncMerge failed, OnAsyncMerge
+CustomDictBase::AsyncMerge failed, trim error
+CustomDictBase::MarkUnusedWord, dict does not find the input
+CustomDictBase::MarkUnusedWord, dict is not loaded or input is invalid
+CustomDictBase::Merge failed, already has async task
+CustomDictBase::Merge failed, merge before
+CustomDictBase::Merge failed, not loaded or header is null
+[DeleteAssociate] -=-=CloudModel: DelayProcessCloudWordAssociationPrefetchResponse request success, now call OnAssociate
+dict_update_conf.json
+dollar-sign
+emotion_pic_dict.dat
+enable_model_rank
+Engine::ClearUsrDict failed
+Engine::CommitCloudPositionCand current is asso model
+Engine::ExportInfo error {}: export dict info failed {}
+Engine::LoadSysDict::AsrCharErrorDict failed
+Engine::LoadSysDict::AsrNgramDict failed
+Engine::LoadSysDict::CorrectDict failed
+Engine::LoadSysDict::EmailSysDict failed
+Engine::LoadSysDict::EmotionPictureDict failed
+Engine::LoadSysDict::ExtensionDict failed
+Engine::LoadSysDict::FieldDict failed
+Engine::LoadSysDict::FollowDict failed
+Engine::LoadSysDict::IncorrectSyllableDict failed
+Engine::LoadSysDict::MLPModel For Cloud failed
+Engine::LoadSysDict::MLPModel no gpt2 failed
+Engine::LoadSysDict::QuantifierDict failed
+Engine::LoadSysDict::SensitiveWordDict failed
+Engine::LoadSysDict::SimTradDict failed
+Engine::LoadSysDict::SyllableDict failed
+Engine::LoadSysDict::SysBigDict failed
+Engine::LoadSysDict::SysBigramDict failed
+Engine::LoadSysDict::SysDict failed
+Engine::LoadSysDict::SysPoemGramDict failed
+Engine::LoadSysDict::TradSimDict failed
+Engine::LoadSysDict::UrlSysDict failed
+Engine::LoadUsrDict::AsrUserNerDict failed
+Engine::LoadUsrDict::ClipboardDict failed
+Engine::LoadUsrDict::CloudHotWordDict failed
+Engine::LoadUsrDict::CloudPrefetchDict failed, cloud prefetch words ignored
+Engine::LoadUsrDict::CloudSensitiveWordDict failed
+Engine::LoadUsrDict::CommonPhraseDict failed
+Engine::LoadUsrDict::EmotionPictureDict failed
+Engine::LoadUsrDict::NameCustomDict failed
+Engine::LoadUsrDict::UsrBigramDict failed
+Engine::LoadUsrDict::UsrDict failed
+Engine::LoadUsrDict::UsrEmailDict failed
+Engine::LoadUsrDict::UsrEnhanceDict failed
+Engine::LoadUsrDict::UsrHistoryBigramDict failed
+Engine::LoadUsrDict::UsrUrlDict failed
+Engine::MergeDict id={} failed, param error or merged dicts is empty
+Engine::MergeDict id={} failed, param path cannot access
+Engine::MergeDict id={} failed, param type error or callback is null
+Engine::MergeDict id={} failed, post task to thread failed

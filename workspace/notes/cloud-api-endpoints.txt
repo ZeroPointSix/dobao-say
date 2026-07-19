@@ -1,0 +1,8 @@
+6https://ime.doubao.com/api/v1/sdk/dns_analysis?domain=
+https://ime.doubao.com/api/v1/translate
+https://ime.doubao.com/obric/ime/cloud/asso
+https://ime.doubao.com/obric/ime/cloud/convert
+https://ime.doubao.com/obric/ime/cloud/getdelword?version=0
+https://ime.doubao.com/obric/ime/cloud/gethotword?version=0
+https://ime.doubao.com/obric/ime/cloud/prefetch_ctx_regulator
+https://ime.doubao.com/obric/ime/cloud/wordasso

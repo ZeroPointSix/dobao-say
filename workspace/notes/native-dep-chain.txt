@@ -1,0 +1,20 @@
+load order (KeyboardJni static):
+  1) System.loadLibrary("ime_ui_android_platform")
+  2) System.loadLibrary("keyboard")  # pulls libshell.so via DT_NEEDED
+  3) System.loadLibrary("track")
+
+libkeyboard.so NEEDED:
+  libshell.so, libime_ui_android_platform.so, libcurl.so, libonnxruntime.so,
+  libtrack.so, liboime-config.so, liblog/android/m/dl/c
+
+libshell.so NEEDED:
+  libtrack.so, liboime-config.so, libandroid.so, libonnxruntime.so, liblog/m/dl/c
+
+ImeNetSDK:
+  System.loadLibrary("ime_net_sdk")  # QUIC streaming / cloud posts
+
+MetaSec:
+  MSB -> LIBNAME = "metasec_ml"  # risk/fingerprint, not APK packer
+
+EncryptorUtil:
+  System.loadLibrary("Encryptor"); native ttEncrypt(byte[], int)

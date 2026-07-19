@@ -2,7 +2,8 @@
 
 - 日期：2026-07-18
 - 样本：豆包安卓输入法原始 APK
-- 状态：已入库，未做完整反编译
+- 状态：已入库（Git LFS），完整性已复验；未做完整反编译
+- 复验报告：`reports/01-upload-verification.md`
 
 ## 1. 文件与哈希
 
@@ -26,7 +27,9 @@
 | 字段 | 值 | 来源 |
 |---|---|---|
 | package | `com.bytedance.android.doubaoime` | binary AndroidManifest 字符串 |
-| versionName（疑似） | `4.2.243.8-doubao` | `classes.dex` 字符串池 |
+| versionName（正式） | `1.3.15` | `aapt dump badging` |
+| versionCode | `100315010` | 同上 |
+| 内部引擎版本串（疑似） | `4.2.243.8-doubao` | `classes.dex` 字符串池 |
 | 邻近版本串 | `4.2.1-rc.8-oime`、`4.3.2-rc.13` | 同上 |
 | release_build | `2b0b44c_20260714_124829_7662229808918579238` | `assets/slardar.properties` |
 | jekins_name | `wave_ime_publish_pkg` | 同上 |
