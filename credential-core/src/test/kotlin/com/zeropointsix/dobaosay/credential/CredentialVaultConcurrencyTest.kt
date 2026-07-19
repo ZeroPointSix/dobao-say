@@ -14,29 +14,31 @@ import kotlin.time.Duration.Companion.seconds
 
 class CredentialVaultConcurrencyTest {
     @Test
-    fun `real scheduler concurrent if absent has one winner`() = runBlocking {
-        val vault =
-            DefaultCredentialVault(
-                InMemorySealedCredentialStore(),
-                TestProtector(),
-                Clock.systemUTC(),
-            )
-        val key = CredentialKey.of("synthetic.race")
-        val start = CompletableDeferred<Unit>()
+    fun `real scheduler concurrent if absent has one winner`() =
+        runBlocking {
+            val vault =
+                DefaultCredentialVault(
+                    InMemorySealedCredentialStore(),
+                    TestProtector(),
+                    Clock.systemUTC(),
+                )
+            val key = CredentialKey.of("synthetic.race")
+            val start = CompletableDeferred<Unit>()
 
-        val results = withTimeout(10.seconds) {
-            List(128) { value ->
-                async(Dispatchers.Default) {
-                    start.await()
-                    SecretBytes.copyOf(byteArrayOf(value.toByte())).use {
-                        vault.write(key, it, null, WriteCondition.IfAbsent)
-                    }
+            val results =
+                withTimeout(10.seconds) {
+                    List(128) { value ->
+                        async(Dispatchers.Default) {
+                            start.await()
+                            SecretBytes.copyOf(byteArrayOf(value.toByte())).use {
+                                vault.write(key, it, null, WriteCondition.IfAbsent)
+                            }
+                        }
+                    }.also { start.complete(Unit) }.awaitAll()
                 }
-            }.also { start.complete(Unit) }.awaitAll()
-        }
 
-        assertEquals(1, results.count { it is CredentialWriteResult.Written })
-        assertEquals(127, results.count { it is CredentialWriteResult.Conflict })
-        assertIs<CredentialReadResult.Available>(vault.read(key)).lease.close()
-    }
+            assertEquals(1, results.count { it is CredentialWriteResult.Written })
+            assertEquals(127, results.count { it is CredentialWriteResult.Conflict })
+            assertIs<CredentialReadResult.Available>(vault.read(key)).lease.close()
+        }
 }

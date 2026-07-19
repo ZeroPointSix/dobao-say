@@ -7,7 +7,9 @@ import java.time.Instant
 sealed interface WriteCondition {
     data object IfAbsent : WriteCondition
 
-    data class IfRevision(val revision: Long) : WriteCondition {
+    data class IfRevision(
+        val revision: Long,
+    ) : WriteCondition {
         init {
             require(revision > 0) { "Revision must be positive" }
         }
@@ -17,23 +19,37 @@ sealed interface WriteCondition {
 sealed interface CredentialReadResult {
     data object Missing : CredentialReadResult
 
-    data class Available(val lease: SecretLease) : CredentialReadResult {
+    data class Available(
+        val lease: SecretLease,
+    ) : CredentialReadResult {
         override fun toString(): String = "CredentialReadResult.Available(lease=$lease)"
     }
 
-    data class Expired(val metadata: CredentialMetadata) : CredentialReadResult
+    data class Expired(
+        val metadata: CredentialMetadata,
+    ) : CredentialReadResult
 
-    data class Corrupt(val metadata: CredentialMetadata) : CredentialReadResult
+    data class Corrupt(
+        val metadata: CredentialMetadata,
+    ) : CredentialReadResult
 
-    data class Unavailable(val code: CredentialErrorCode) : CredentialReadResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : CredentialReadResult
 }
 
 sealed interface CredentialWriteResult {
-    data class Written(val revision: Long) : CredentialWriteResult
+    data class Written(
+        val revision: Long,
+    ) : CredentialWriteResult
 
-    data class Conflict(val currentRevision: Long?) : CredentialWriteResult
+    data class Conflict(
+        val currentRevision: Long?,
+    ) : CredentialWriteResult
 
-    data class Unavailable(val code: CredentialErrorCode) : CredentialWriteResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : CredentialWriteResult
 }
 
 sealed interface CredentialDeleteResult {
@@ -41,13 +57,17 @@ sealed interface CredentialDeleteResult {
 
     data object AlreadyMissing : CredentialDeleteResult
 
-    data class Unavailable(val code: CredentialErrorCode) : CredentialDeleteResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : CredentialDeleteResult
 }
 
 sealed interface CredentialClearResult {
     data object Cleared : CredentialClearResult
 
-    data class Unavailable(val code: CredentialErrorCode) : CredentialClearResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : CredentialClearResult
 }
 
 interface CredentialVault {
@@ -86,7 +106,9 @@ class DefaultCredentialVault(
                     CredentialReadResult.Unavailable(stored.code.safeStoreCode())
                 }
 
-                is StoreReadResult.Found -> readFound(stored.credential)
+                is StoreReadResult.Found -> {
+                    readFound(stored.credential)
+                }
             }
         }
 
@@ -99,16 +121,17 @@ class DefaultCredentialVault(
         safely(
             unavailable = { CredentialWriteResult.Unavailable(it) },
         ) {
-            val sealed = secret.useBytes { temporary ->
-                SecretBytes.copyOf(temporary).use { operationSecret -> protector.seal(operationSecret) }
-            }
+            val sealed =
+                secret.useBytes { temporary ->
+                    SecretBytes.copyOf(temporary).use { operationSecret -> protector.seal(operationSecret) }
+                }
             when (sealed) {
                 is SealResult.Unavailable -> {
                     diagnose(CredentialDiagnosticCode.WRITE_UNAVAILABLE)
                     CredentialWriteResult.Unavailable(sealed.code.safeProtectorCode())
                 }
 
-                is SealResult.Sealed ->
+                is SealResult.Sealed -> {
                     sealed.payload.use { payload ->
                         val expected =
                             when (condition) {
@@ -132,6 +155,7 @@ class DefaultCredentialVault(
                             }
                         }
                     }
+                }
             }
         }
 
@@ -192,13 +216,14 @@ class DefaultCredentialVault(
                     CredentialReadResult.Unavailable(opened.code.safeProtectorCode())
                 }
 
-                is OpenResult.Opened ->
+                is OpenResult.Opened -> {
                     opened.secret.use { secret ->
                         secret.useBytes { temporary ->
                             diagnose(CredentialDiagnosticCode.READ_AVAILABLE)
                             CredentialReadResult.Available(SecretLease(temporary, stored.metadata))
                         }
                     }
+                }
             }
         }
 

@@ -4,7 +4,9 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 @JvmInline
-value class CredentialKey private constructor(val value: String) {
+value class CredentialKey private constructor(
+    val value: String,
+) {
     companion object {
         private val validKey = Regex("[a-z][a-z0-9_.-]{0,63}")
 
@@ -16,7 +18,9 @@ value class CredentialKey private constructor(val value: String) {
 }
 
 /** Owns a defensive copy of secret bytes. Callers must close it as soon as practical. */
-class SecretBytes private constructor(bytes: ByteArray) : AutoCloseable {
+class SecretBytes private constructor(
+    bytes: ByteArray,
+) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val owned = bytes.copyOf()
 
@@ -99,7 +103,9 @@ data class CredentialMetadata(
 }
 
 /** Owns protected bytes crossing the protector/store boundary. */
-class ProtectedPayload private constructor(bytes: ByteArray) : AutoCloseable {
+class ProtectedPayload private constructor(
+    bytes: ByteArray,
+) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val owned = bytes.copyOf()
 

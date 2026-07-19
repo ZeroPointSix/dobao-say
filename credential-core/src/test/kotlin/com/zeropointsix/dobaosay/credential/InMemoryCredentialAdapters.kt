@@ -71,14 +71,16 @@ internal class InMemorySealedCredentialStore : SealedCredentialStore {
 
     override suspend fun read(key: CredentialKey): StoreReadResult {
         if (failReads) return StoreReadResult.Unavailable(CredentialErrorCode.STORE_UNAVAILABLE)
-        val snapshot = synchronized(lock) { entries[key]?.let { it.copy(payload = it.payload.copyOf()) } }
-            ?: return StoreReadResult.Missing
-        return StoreReadResult.Found(
-            StoredCredential(
-                CredentialMetadata(snapshot.revision, snapshot.expiresAt),
-                ProtectedPayload.copyOf(snapshot.payload),
-            ),
-        ).also { snapshot.payload.fill(0) }
+        val snapshot =
+            synchronized(lock) { entries[key]?.let { it.copy(payload = it.payload.copyOf()) } }
+                ?: return StoreReadResult.Missing
+        return StoreReadResult
+            .Found(
+                StoredCredential(
+                    CredentialMetadata(snapshot.revision, snapshot.expiresAt),
+                    ProtectedPayload.copyOf(snapshot.payload),
+                ),
+            ).also { snapshot.payload.fill(0) }
     }
 
     override suspend fun compareAndSet(
@@ -121,7 +123,10 @@ internal class InMemorySealedCredentialStore : SealedCredentialStore {
         return StoreClearResult.Cleared
     }
 
-    fun overwriteStoredCopy(key: CredentialKey, replacement: ByteArray) {
+    fun overwriteStoredCopy(
+        key: CredentialKey,
+        replacement: ByteArray,
+    ) {
         synchronized(lock) {
             val current = entries.getValue(key)
             current.payload.fill(0)

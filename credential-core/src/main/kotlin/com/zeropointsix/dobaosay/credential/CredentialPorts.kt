@@ -9,21 +9,29 @@ enum class CredentialErrorCode {
 }
 
 sealed interface SealResult {
-    class Sealed(val payload: ProtectedPayload) : SealResult {
+    class Sealed(
+        val payload: ProtectedPayload,
+    ) : SealResult {
         override fun toString(): String = "SealResult.Sealed(payload=redacted)"
     }
 
-    data class Unavailable(val code: CredentialErrorCode) : SealResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : SealResult
 }
 
 sealed interface OpenResult {
-    class Opened(val secret: SecretBytes) : OpenResult {
+    class Opened(
+        val secret: SecretBytes,
+    ) : OpenResult {
         override fun toString(): String = "OpenResult.Opened(secret=redacted)"
     }
 
     data object Corrupt : OpenResult
 
-    data class Unavailable(val code: CredentialErrorCode) : OpenResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : OpenResult
 }
 
 interface CredentialProtector {
@@ -35,19 +43,29 @@ interface CredentialProtector {
 sealed interface StoreReadResult {
     data object Missing : StoreReadResult
 
-    class Found(val credential: StoredCredential) : StoreReadResult {
+    class Found(
+        val credential: StoredCredential,
+    ) : StoreReadResult {
         override fun toString(): String = "StoreReadResult.Found(credential=$credential)"
     }
 
-    data class Unavailable(val code: CredentialErrorCode) : StoreReadResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : StoreReadResult
 }
 
 sealed interface StoreWriteResult {
-    data class Applied(val revision: Long) : StoreWriteResult
+    data class Applied(
+        val revision: Long,
+    ) : StoreWriteResult
 
-    data class Conflict(val currentRevision: Long?) : StoreWriteResult
+    data class Conflict(
+        val currentRevision: Long?,
+    ) : StoreWriteResult
 
-    data class Unavailable(val code: CredentialErrorCode) : StoreWriteResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : StoreWriteResult
 }
 
 sealed interface StoreDeleteResult {
@@ -55,13 +73,17 @@ sealed interface StoreDeleteResult {
 
     data object Missing : StoreDeleteResult
 
-    data class Unavailable(val code: CredentialErrorCode) : StoreDeleteResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : StoreDeleteResult
 }
 
 sealed interface StoreClearResult {
     data object Cleared : StoreClearResult
 
-    data class Unavailable(val code: CredentialErrorCode) : StoreClearResult
+    data class Unavailable(
+        val code: CredentialErrorCode,
+    ) : StoreClearResult
 }
 
 /**
