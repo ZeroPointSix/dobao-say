@@ -2,6 +2,7 @@ package com.zeropointsix.dobaosay.audio
 
 import com.zeropointsix.dobaosay.asr.AudioFrame
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.advanceTimeBy
@@ -14,6 +15,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class InMemoryLoopbackTransportTest {
     @Test
     fun `queue is strictly bounded and slow consumer backpressures sender`() =
