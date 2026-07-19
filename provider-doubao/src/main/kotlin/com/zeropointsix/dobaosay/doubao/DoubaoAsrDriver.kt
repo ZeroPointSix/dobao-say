@@ -31,6 +31,9 @@ import kotlin.time.toJavaDuration
 
 private const val NORMAL_CLOSURE = 1000
 
+/** ~400ms of silence at 20ms/frame before LAST — reduces clipped sentence endings. */
+private const val SILENCE_PAD_FRAMES = 20
+
 class DoubaoAsrDriver(
     private val runtimeConfig: DoubaoDriverRuntimeConfig,
 ) : AsrDriver {
@@ -121,18 +124,29 @@ class DoubaoAsrDriver(
     override suspend fun requestStop() {
         if (!stopRequested.compareAndSet(false, true)) return
         if (!closed.get() && nextFrameState != DoubaoFrameState.FIRST) {
+            // Reverse clients / IME UX: pad ~400ms silence before LAST so server VAD can flush
+            // the trailing syllable (a single 20ms frame is often clipped).
             val silence = ByteArray(runtimeConfig.audioFormat.bytesPerFrame)
-            val opus = encoder.encodePcm16Le(silence, frameSizePerChannel)
-            sendRequest(
-                DoubaoAsrRequest(
-                    serviceName = "ASR",
-                    methodName = "TaskRequest",
-                    payload = audioMetadata(System.currentTimeMillis()),
-                    audioData = opus,
-                    requestId = requestId,
-                    frameState = DoubaoFrameState.LAST,
-                ),
-            )
+            for (index in 0 until SILENCE_PAD_FRAMES) {
+                val opus = encoder.encodePcm16Le(silence, frameSizePerChannel)
+                val frameState =
+                    if (index == SILENCE_PAD_FRAMES - 1) {
+                        DoubaoFrameState.LAST
+                    } else {
+                        DoubaoFrameState.MIDDLE
+                    }
+                sendRequest(
+                    DoubaoAsrRequest(
+                        serviceName = "ASR",
+                        methodName = "TaskRequest",
+                        payload = audioMetadata(System.currentTimeMillis()),
+                        audioData = opus,
+                        requestId = requestId,
+                        frameState = frameState,
+                    ),
+                )
+            }
+            nextFrameState = DoubaoFrameState.LAST
         }
         sendRequest(finishSessionRequest())
     }

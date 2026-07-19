@@ -30,7 +30,7 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 ./gradlew --no-daemon --stacktrace :app:assembleDebug
 ```
 
-本次云环境使用 `/tmp/android-sdk` 安装了：
+本次云环境使用了 `/tmp/android-sdk` 安装了：
 
 - `platforms;android-35`
 - `build-tools;35.0.1`
@@ -67,6 +67,16 @@ app/build/outputs/apk/debug/app-debug.apk
 - 中心语音球：单击开始 / 再单击结束；Recording 脉冲；Finalizing spinner
 - 本会话历史列表 + 设置（清空历史 / 清除凭证）
 - 仍是 App 内入口，不是系统悬浮窗（ZER-110）
+
+## ASR 质量版（0.5.1-asr-quality）
+
+对照 Node / Swift 逆向客户端与 APK stage1 结论，修复 PTT 听写「像变笨」的主因：
+
+- 连接期麦克风预缓冲（不再等 Ready 才开麦）
+- 中段 VAD Final 拼接，不再提前终态
+- 停止时约 400ms 静音尾垫
+
+细节见 [asr-quality-from-reverse.md](asr-quality-from-reverse.md)。
 
 ## 运行行为
 
