@@ -4,21 +4,31 @@ import kotlin.time.Duration
 
 sealed interface RetryDisposition {
     data object Never : RetryDisposition
+
     data object Immediate : RetryDisposition
+
     data object Backoff : RetryDisposition
-    data class After(val delay: Duration) : RetryDisposition
+
+    data class After(
+        val delay: Duration,
+    ) : RetryDisposition
 }
 
 sealed interface AsrFailure {
     val code: String
     val retry: RetryDisposition
 
-    data class InvalidAudio(val reason: String) : AsrFailure {
+    data class InvalidAudio(
+        val reason: String,
+    ) : AsrFailure {
         override val code = "invalid_audio"
         override val retry = RetryDisposition.Never
     }
 
-    data class InvalidState(val command: String, val state: AsrSessionState) : AsrFailure {
+    data class InvalidState(
+        val command: String,
+        val state: AsrSessionState,
+    ) : AsrFailure {
         override val code = "invalid_state"
         override val retry = RetryDisposition.Never
     }
@@ -33,7 +43,9 @@ sealed interface AsrFailure {
         override val retry = RetryDisposition.Backoff
     }
 
-    data class RateLimited(val retryAfter: Duration) : AsrFailure {
+    data class RateLimited(
+        val retryAfter: Duration,
+    ) : AsrFailure {
         override val code = "rate_limited"
         override val retry = RetryDisposition.After(retryAfter)
     }
@@ -43,17 +55,23 @@ sealed interface AsrFailure {
         override val retry = RetryDisposition.Never
     }
 
-    data class ProtocolViolation(val diagnosticCode: String) : AsrFailure {
+    data class ProtocolViolation(
+        val diagnosticCode: String,
+    ) : AsrFailure {
         override val code = "protocol_violation"
         override val retry = RetryDisposition.Never
     }
 
-    data class Timeout(val phase: TimeoutPhase) : AsrFailure {
+    data class Timeout(
+        val phase: TimeoutPhase,
+    ) : AsrFailure {
         override val code = "timeout_${phase.name.lowercase()}"
         override val retry = RetryDisposition.Backoff
     }
 
-    data class Internal(val diagnosticCode: String) : AsrFailure {
+    data class Internal(
+        val diagnosticCode: String,
+    ) : AsrFailure {
         override val code = "internal"
         override val retry = RetryDisposition.Never
     }

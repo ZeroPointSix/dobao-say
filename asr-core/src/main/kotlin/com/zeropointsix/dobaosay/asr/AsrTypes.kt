@@ -5,7 +5,9 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @JvmInline
-value class ProviderId(val value: String) {
+value class ProviderId(
+    val value: String,
+) {
     init {
         require(value.isNotBlank()) { "Provider ID must not be blank" }
     }
@@ -49,7 +51,9 @@ data class AudioFormat(
         }
 }
 
-enum class AudioEncoding(val bytesPerSample: Int) {
+enum class AudioEncoding(
+    val bytesPerSample: Int,
+) {
     PCM_16_LE(2),
 }
 
@@ -65,8 +69,7 @@ class AudioFrame(
         require(timestampMs >= 0) { "Audio timestamp must be non-negative" }
     }
 
-    override fun toString(): String =
-        "AudioFrame(sequence=$sequence, timestampMs=$timestampMs, byteCount=${bytes.size})"
+    override fun toString(): String = "AudioFrame(sequence=$sequence, timestampMs=$timestampMs, byteCount=${bytes.size})"
 }
 
 enum class StopReason { MANUAL, VAD }
@@ -75,6 +78,10 @@ enum class CancelReason { USER, APP_BACKGROUNDED, SUPERSEDED }
 
 sealed interface AsrCommandResult {
     data object Accepted : AsrCommandResult
+
     data object IgnoredAlreadyHandled : AsrCommandResult
-    data class Rejected(val failure: AsrFailure) : AsrCommandResult
+
+    data class Rejected(
+        val failure: AsrFailure,
+    ) : AsrCommandResult
 }
