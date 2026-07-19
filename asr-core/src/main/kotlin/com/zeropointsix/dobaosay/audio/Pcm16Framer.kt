@@ -19,7 +19,8 @@ data class PcmFramerStats(
  * Stateful clean-room PCM16 framer. Input chunks may split samples or frame boundaries.
  *
  * The default format deterministically emits 20 ms, 640-byte frames. [finish] either drops the
- * incomplete tail or pads it with zeroes, as selected by [tailPolicy].
+ * incomplete tail or pads it with zeroes, as selected by [tailPolicy]. Every mutation is
+ * transactional: all counters, timestamps and frames are validated before state is committed.
  */
 class Pcm16Framer(
     val format: AudioFormat = AudioFormat(),
@@ -60,42 +61,79 @@ class Pcm16Framer(
             return emptyList()
         }
 
-        val frames = ArrayList<AudioFrame>(frameCount)
-        repeat(frameCount) { index ->
-            val start = index * frameSize
-            frames += newFrame(combined.copyOfRange(start, start + frameSize))
-        }
+        val plan = planFrames(combined, frameCount)
         pending = combined.copyOfRange(frameCount * frameSize, combined.size)
-        return frames
+        commit(plan)
+        return plan.frames
     }
 
     fun finish(): List<AudioFrame> {
         if (finished) return emptyList()
-        finished = true
-        if (pending.isEmpty()) return emptyList()
+        if (pending.isEmpty()) {
+            finished = true
+            return emptyList()
+        }
 
         return when (tailPolicy) {
             TailFramePolicy.DROP -> {
-                droppedTailBytes = pending.size
+                val tailSize = pending.size
                 pending = ByteArray(0)
+                droppedTailBytes = tailSize
+                finished = true
                 emptyList()
             }
 
             TailFramePolicy.PAD_WITH_ZERO -> {
                 val tailSize = pending.size
                 val padded = pending.copyOf(format.bytesPerFrame)
-                paddedTailBytes = format.bytesPerFrame - tailSize
+                val plan = planFrames(padded, 1)
                 pending = ByteArray(0)
-                listOf(newFrame(padded))
+                paddedTailBytes = format.bytesPerFrame - tailSize
+                finished = true
+                commit(plan)
+                plan.frames
             }
         }
     }
 
-    private fun newFrame(bytes: ByteArray): AudioFrame {
-        val frame = AudioFrame(nextSequence, nextTimestampMs, bytes, format)
-        nextSequence = Math.incrementExact(nextSequence)
-        nextTimestampMs = Math.addExact(nextTimestampMs, format.frameDurationMs.toLong())
-        emittedFrames = Math.incrementExact(emittedFrames)
-        return frame
+    private fun planFrames(
+        source: ByteArray,
+        frameCount: Int,
+    ): FramePlan {
+        require(frameCount > 0)
+        val count = frameCount.toLong()
+        val finalSequence = Math.addExact(nextSequence, count)
+        val timestampAdvance = Math.multiplyExact(format.frameDurationMs.toLong(), count)
+        val finalTimestamp = Math.addExact(nextTimestampMs, timestampAdvance)
+        val finalEmittedFrames = Math.addExact(emittedFrames, count)
+        val frameSize = format.bytesPerFrame
+        val frames =
+            List(frameCount) { index ->
+                val offset = index * frameSize
+                AudioFrame(
+                    sequence = Math.addExact(nextSequence, index.toLong()),
+                    timestampMs =
+                        Math.addExact(
+                            nextTimestampMs,
+                            Math.multiplyExact(format.frameDurationMs.toLong(), index.toLong()),
+                        ),
+                    bytes = source.copyOfRange(offset, offset + frameSize),
+                    format = format,
+                )
+            }
+        return FramePlan(frames, finalSequence, finalTimestamp, finalEmittedFrames)
     }
+
+    private fun commit(plan: FramePlan) {
+        nextSequence = plan.finalSequence
+        nextTimestampMs = plan.finalTimestampMs
+        emittedFrames = plan.finalEmittedFrames
+    }
+
+    private data class FramePlan(
+        val frames: List<AudioFrame>,
+        val finalSequence: Long,
+        val finalTimestampMs: Long,
+        val finalEmittedFrames: Long,
+    )
 }
