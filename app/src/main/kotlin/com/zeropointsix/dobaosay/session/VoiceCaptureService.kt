@@ -181,7 +181,14 @@ class VoiceCaptureService : Service() {
     }
 
     private suspend fun runAsrSession(sessionId: String) {
-        val sessionConfig = AsrSessionConfig()
+        // Align with reverse PTT clients (Node realtime / gfreezy DoubaoASR):
+        // VAD finals are segment boundaries to join, not end-of-hold.
+        val sessionConfig =
+            AsrSessionConfig(
+                autoStopOnVad = false,
+                commitFinalImmediately = false,
+                stopFinalTimeout = 3.seconds,
+            )
         val provider =
             try {
                 prepareDoubaoProvider()
@@ -223,6 +230,30 @@ class VoiceCaptureService : Service() {
                 }
             }
 
+        // Start mic while connecting so speech during handshake is not lost (prebuffer).
+        val prebuffer = ArrayDeque<ByteArray>(PREBUFFER_MAX_FRAMES)
+        val prebufferLock = Any()
+        micCapture?.close()
+        val earlyCapture = MicPcmCapture()
+        micCapture = earlyCapture
+        val prebufferJob =
+            serviceScope.launch(Dispatchers.IO) {
+                try {
+                    earlyCapture.start()
+                    while (isActive && !stopRequested.get() && !ready.isCompleted) {
+                        val bytes = earlyCapture.readFrame { !stopRequested.get() && !ready.isCompleted } ?: break
+                        synchronized(prebufferLock) {
+                            if (prebuffer.size >= PREBUFFER_MAX_FRAMES) {
+                                prebuffer.removeFirst()
+                            }
+                            prebuffer.addLast(bytes)
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Handshake failure / cancel — captureAndPush or teardown handles cleanup.
+                }
+            }
+
         try {
             when (val result = session.start()) {
                 AsrCommandResult.Accepted,
@@ -238,8 +269,11 @@ class VoiceCaptureService : Service() {
             if (!VoiceSessionBus.holdPressed.get()) {
                 stopRequested.set(true)
             }
-            if (ready.await() && !stopRequested.get()) {
-                captureAndPush(session, sessionId)
+            val connected = ready.await()
+            prebufferJob.cancel()
+            runCatching { prebufferJob.join() }
+            if (connected && !stopRequested.get()) {
+                captureAndPush(session, sessionId, earlyCapture, prebuffer, prebufferLock)
             }
 
             if (session.snapshot.value.state !is AsrSessionState.Closed) {
@@ -265,6 +299,7 @@ class VoiceCaptureService : Service() {
                 }
             }
         } finally {
+            prebufferJob.cancel()
             eventJob.cancel()
             currentSession = null
         }
@@ -291,23 +326,47 @@ class VoiceCaptureService : Service() {
     private suspend fun captureAndPush(
         session: AsrSession,
         sessionId: String,
+        capture: MicPcmCapture,
+        prebuffer: ArrayDeque<ByteArray>,
+        prebufferLock: Any,
     ) {
-        micCapture?.close()
-        val capture = MicPcmCapture()
-        micCapture = capture
         withContext(Dispatchers.IO) {
             var sequence = 0L
-            val startedAtMs = SystemClock.elapsedRealtime()
             try {
-                capture.start()
                 publish(VoicePhase.Recording, "录音中", "再单击语音球或通知中的停止结束。", sessionId = sessionId)
                 updateNotification("录音中", "正在使用麦克风", showStop = true)
+
+                val pending =
+                    synchronized(prebufferLock) {
+                        ArrayList(prebuffer).also { prebuffer.clear() }
+                    }
+                for (bytes in pending) {
+                    if (stopRequested.get()) break
+                    val frame =
+                        AudioFrame(
+                            sequence = sequence,
+                            timestampMs = sequence * capture.audioFormat.frameDurationMs.toLong(),
+                            bytes = bytes,
+                            format = capture.audioFormat,
+                        )
+                    when (val result = session.pushAudio(frame)) {
+                        AsrCommandResult.Accepted,
+                        AsrCommandResult.IgnoredAlreadyHandled,
+                        -> sequence += 1
+
+                        is AsrCommandResult.Rejected -> {
+                            if (!stopRequested.get()) publishFailure(result.failure, sessionId)
+                            return@withContext
+                        }
+                    }
+                }
+
                 while (isActive && !stopRequested.get()) {
                     val bytes = capture.readFrame { !stopRequested.get() } ?: break
                     val frame =
                         AudioFrame(
                             sequence = sequence,
-                            timestampMs = SystemClock.elapsedRealtime() - startedAtMs,
+                            timestampMs = sequence * capture.audioFormat.frameDurationMs.toLong(),
                             bytes = bytes,
                             format = capture.audioFormat,
                         )
@@ -353,11 +412,14 @@ class VoiceCaptureService : Service() {
                 publish(VoicePhase.Recognizing, "识别中", text, sessionId = sessionId)
             }
 
-            is AsrEvent.Final -> publishFinalText(event.text, sessionId)
+            is AsrEvent.Final -> {
+                // Mid-hold VAD segments arrive as Final; keep showing recognizing until Closed.
+                val text = event.text.ifBlank { "正在接收结果..." }
+                publish(VoicePhase.Recognizing, "识别中", text, sessionId = sessionId)
+            }
 
             is AsrEvent.SpeechEnded -> {
-                publish(VoicePhase.Stopping, "收尾中", "语音结束，正在请求最终结果。", sessionId = sessionId)
-                updateNotification("收尾中", "正在请求最终结果...", showStop = false)
+                publish(VoicePhase.Recognizing, "识别中", "检测到句段结束，继续录音中…", sessionId = sessionId)
             }
 
             is AsrEvent.Retrying -> {
@@ -505,6 +567,9 @@ class VoiceCaptureService : Service() {
         const val ACTION_START = "com.zeropointsix.dobaosay.action.VOICE_START"
         const val ACTION_STOP = "com.zeropointsix.dobaosay.action.VOICE_STOP"
         const val ACTION_CANCEL = "com.zeropointsix.dobaosay.action.VOICE_CANCEL"
+
+        /** ~3s ring buffer while WS handshake completes (20ms frames). */
+        private const val PREBUFFER_MAX_FRAMES = 150
 
         fun start(context: Context) {
             val intent = Intent(context, VoiceCaptureService::class.java).setAction(ACTION_START)
