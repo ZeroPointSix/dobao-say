@@ -14,6 +14,7 @@ import com.zeropointsix.dobaosay.audio.InMemoryLoopbackTransport
 import com.zeropointsix.dobaosay.audio.LoopbackSendResult
 import com.zeropointsix.dobaosay.audio.LoopbackStats
 import com.zeropointsix.dobaosay.audio.Pcm16Framer
+import com.zeropointsix.dobaosay.audio.PcmFramerStats
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +72,8 @@ class SimulatedTranscriptionBatchTest {
                     scenarioScope.launch(start = CoroutineStart.UNDISPATCHED) {
                         session.events.collect { events += it }
                     }
-                val frames = framedPcm(frameCount = 8)
+                val framed = framedPcm(frameCount = 8)
+                val frames = framed.frames
                 val transport = InMemoryLoopbackTransport(capacity = 2, deliveryDelay = 2.milliseconds)
 
                 assertEquals(AsrCommandResult.Accepted, session.start())
@@ -119,7 +121,8 @@ class SimulatedTranscriptionBatchTest {
             backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 session.events.collect { events += it }
             }
-        val frames = framedPcm(spec.frameCount)
+        val framed = framedPcm(spec.frameCount)
+        val frames = framed.frames
         val transport = InMemoryLoopbackTransport(capacity = 2)
 
         assertEquals(AsrCommandResult.Accepted, session.start())
@@ -151,7 +154,7 @@ class SimulatedTranscriptionBatchTest {
         assertTrue(scenarioJob.children.none(), "${spec.id}: residual session child")
 
         val state = assertIs<AsrSessionState.Closed>(session.snapshot.value.state)
-        assertScenario(spec, state.outcome, events, driver, transport.stats.value)
+        assertScenario(spec, state.outcome, events, driver, transport.stats.value, frames.size)
         val result =
             ScenarioResult(
                 id = spec.id,
@@ -164,6 +167,12 @@ class SimulatedTranscriptionBatchTest {
                 releaseCount = driver.releaseCount,
                 abortCount = driver.abortCount,
                 loopback = transport.stats.value,
+                framer = framed.stats,
+                partialCount = events.count { it is AsrEvent.Partial },
+                finalCount = events.count { it is AsrEvent.Final },
+                closedCount = events.count { it is AsrEvent.Closed },
+                sequenceMonotonic = events.zipWithNext().all { (left, right) -> left.sequence < right.sequence },
+                liveChildCount = scenarioJob.children.count(),
             )
         scenarioJob.cancelAndJoin()
         return result
@@ -234,6 +243,7 @@ class SimulatedTranscriptionBatchTest {
         events: List<AsrEvent>,
         driver: SimulatedTranscriptionDriver,
         stats: LoopbackStats,
+        inputFrames: Int,
     ) {
         assertTrue(events.zipWithNext().all { (left, right) -> left.sequence < right.sequence }, "${spec.id}: sequence")
         assertEquals(1, events.count { it is AsrEvent.Closed }, "${spec.id}: Closed count")
@@ -248,12 +258,15 @@ class SimulatedTranscriptionBatchTest {
         if (spec.cancelAfterFrames != null) {
             assertEquals(SessionOutcome.Cancelled(CancelReason.USER), outcome)
             assertEquals(1, driver.abortCount)
+            assertEquals(0, events.count { it is AsrEvent.Final })
         } else {
             when (spec.mode) {
                 SimulatedDriverMode.SUCCESS -> {
                     assertIs<SessionOutcome.Succeeded>(outcome)
                     assertTrue(events.any { it is AsrEvent.Partial }, "${spec.id}: partial missing")
                     assertEquals(1, events.count { it is AsrEvent.Final }, "${spec.id}: Final count")
+                    assertEquals(inputFrames, driver.receivedFrames.size, "${spec.id}: Driver frame count")
+                    assertEquals(1, driver.stopCount, "${spec.id}: stop count")
                     if (spec.vad) {
                         assertEquals(1, events.count { it is AsrEvent.SpeechEnded }, "${spec.id}: VAD")
                     }
@@ -263,29 +276,36 @@ class SimulatedTranscriptionBatchTest {
                 SimulatedDriverMode.CONNECT_TIMEOUT -> {
                     assertEquals(SessionOutcome.Failed(AsrFailure.Timeout(TimeoutPhase.CONNECT)), outcome)
                     assertEquals(1, driver.abortCount)
+                    assertEquals(0, events.count { it is AsrEvent.Final })
                 }
 
                 SimulatedDriverMode.FINAL_TIMEOUT -> {
                     assertEquals(SessionOutcome.Failed(AsrFailure.Timeout(TimeoutPhase.FINAL)), outcome)
                     assertTrue(events.any { it is AsrEvent.Partial }, "${spec.id}: partial missing")
                     assertEquals(1, driver.abortCount)
+                    assertEquals(0, events.count { it is AsrEvent.Final })
                 }
 
                 SimulatedDriverMode.DRIVER_FAILED -> {
                     assertEquals(SessionOutcome.Failed(AsrFailure.NetworkUnavailable), outcome)
                     assertEquals(0, driver.abortCount)
+                    assertEquals(0, events.count { it is AsrEvent.Final })
                 }
             }
         }
     }
 
-    private fun framedPcm(frameCount: Int): List<com.zeropointsix.dobaosay.asr.AudioFrame> {
+    private fun framedPcm(frameCount: Int): FramedPcm {
         val framer = Pcm16Framer()
         val bytes =
             ByteArray(Math.multiplyExact(frameCount, framer.format.bytesPerFrame)) { index ->
                 (index % 251).toByte()
             }
-        return framer.push(bytes) + framer.finish()
+        val frames = framer.push(bytes) + framer.finish()
+        assertEquals(frameCount.toLong(), framer.stats.emittedFrames)
+        assertEquals(0, framer.stats.droppedTailBytes)
+        assertEquals(0, framer.stats.paddedTailBytes)
+        return FramedPcm(frames, framer.stats)
     }
 
     private fun writeReport(results: List<ScenarioResult>) {
@@ -313,9 +333,13 @@ class SimulatedTranscriptionBatchTest {
             (failureCode?.let { "\"$it\"" } ?: "null") +
             ", \"inputFrames\": $inputFrames, \"driverFrames\": $driverFrames, " +
             "\"eventCount\": $eventCount, \"elapsedMs\": $elapsedMs, " +
+            "\"events\": {\"partialCount\": $partialCount, \"finalCount\": $finalCount, " +
+            "\"closedCount\": $closedCount, \"sequenceMonotonic\": $sequenceMonotonic}, " +
+            "\"framer\": {\"emittedFrames\": ${framer.emittedFrames}, " +
+            "\"droppedTailBytes\": ${framer.droppedTailBytes}, \"paddedTailBytes\": ${framer.paddedTailBytes}}, " +
             "\"cleanup\": {\"releaseCount\": $releaseCount, \"abortCount\": $abortCount, " +
             "\"activeSenders\": ${loopback.activeSenders}, \"queuedFrames\": ${loopback.queuedFrames}, " +
-            "\"inDeliveryFrames\": ${loopback.inDeliveryFrames}}, " +
+            "\"inDeliveryFrames\": ${loopback.inDeliveryFrames}, \"liveChildCount\": $liveChildCount}, " +
             "\"loopback\": {\"capacity\": ${loopback.capacity}, \"maxQueuedFrames\": ${loopback.maxQueuedFrames}, " +
             "\"acceptedFrames\": ${loopback.acceptedFrames}, \"receivedFrames\": ${loopback.receivedFrames}, " +
             "\"droppedOnCloseFrames\": ${loopback.droppedOnCloseFrames}, " +
@@ -364,6 +388,17 @@ class SimulatedTranscriptionBatchTest {
         val releaseCount: Int,
         val abortCount: Int,
         val loopback: LoopbackStats,
+        val framer: PcmFramerStats,
+        val partialCount: Int,
+        val finalCount: Int,
+        val closedCount: Int,
+        val sequenceMonotonic: Boolean,
+        val liveChildCount: Int,
+    )
+
+    private data class FramedPcm(
+        val frames: List<com.zeropointsix.dobaosay.asr.AudioFrame>,
+        val stats: PcmFramerStats,
     )
 
     private companion object {
