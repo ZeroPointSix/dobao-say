@@ -4,7 +4,9 @@
 
 ## 当前状态
 
-当前包含 Kotlin/JVM 的 ASR Provider 契约、会话状态机、离线测试，以及 ZER-102 最小 Android PoC。Android PoC 使用原生 View XML 单屏界面：按住按钮录音，松开结束，最终文本复制到剪贴板。
+当前包含 Kotlin/JVM 的 ASR Provider 契约、会话状态机、离线测试，Doubao Provider，以及 Android 系统基础设施 + PoC UI。
+
+Android 侧已具备：`PermissionGate`、`MicPcmCapture`、`AudioFocusController`、`VoiceCaptureService`（microphone FGS + 通知停止）、按住说话驱动服务并将最终文本复制到剪贴板。详见 [android-system-infra.md](docs/android-system-infra.md)。
 
 Doubao Provider 的 JVM 端文件转写 live smoke 已使用样例 WAV 对真实 Doubao IME ASR 验证通过；文档不记录凭据、Token 或完整转写文本。
 
