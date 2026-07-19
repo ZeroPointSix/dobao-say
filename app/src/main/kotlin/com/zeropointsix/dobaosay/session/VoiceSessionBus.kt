@@ -26,7 +26,7 @@ data class VoiceUiState(
  * Process-local fan-out so Activity can observe Service session state without AndroidX.
  */
 object VoiceSessionBus {
-    /** True while the user is holding the record button (press-to-talk). */
+    /** True while the user intends an active capture (click-toggle "on"). */
     val holdPressed = AtomicBoolean(false)
 
     @Volatile
