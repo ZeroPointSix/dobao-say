@@ -67,17 +67,19 @@ class SimulatedTranscriptionBatchTest {
                 val driver = SimulatedTranscriptionDriver(SimulatedDriverMode.SUCCESS, "real-smoke")
                 val session = DefaultAsrSession(AsrSessionConfig(), driver, scenarioScope)
                 val events = CopyOnWriteArrayList<AsrEvent>()
-                val collector = scenarioScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                    session.events.collect { events += it }
-                }
+                val collector =
+                    scenarioScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        session.events.collect { events += it }
+                    }
                 val frames = framedPcm(frameCount = 8)
                 val transport = InMemoryLoopbackTransport(capacity = 2, deliveryDelay = 2.milliseconds)
 
                 assertEquals(AsrCommandResult.Accepted, session.start())
                 session.snapshot.first { it.state == AsrSessionState.Ready }
-                val sender = scenarioScope.async {
-                    frames.forEach { assertEquals(LoopbackSendResult.Accepted, transport.send(it)) }
-                }
+                val sender =
+                    scenarioScope.async {
+                        frames.forEach { assertEquals(LoopbackSendResult.Accepted, transport.send(it)) }
+                    }
                 repeat(frames.size) {
                     assertEquals(AsrCommandResult.Accepted, session.pushAudio(checkNotNull(transport.receive())))
                 }
@@ -113,20 +115,22 @@ class SimulatedTranscriptionBatchTest {
             )
         val session = DefaultAsrSession(config, driver, scenarioScope, clockMs = { testScheduler.currentTime })
         val events = CopyOnWriteArrayList<AsrEvent>()
-        val collector = backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            session.events.collect { events += it }
-        }
+        val collector =
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                session.events.collect { events += it }
+            }
         val frames = framedPcm(spec.frameCount)
         val transport = InMemoryLoopbackTransport(capacity = 2)
 
         assertEquals(AsrCommandResult.Accepted, session.start())
         runCurrent()
         if (spec.mode == SimulatedDriverMode.CONNECT_TIMEOUT) {
-            val sender = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
-                frames.forEach { frame ->
-                    if (transport.send(frame) == LoopbackSendResult.Closed) return@async
+            val sender =
+                backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+                    frames.forEach { frame ->
+                        if (transport.send(frame) == LoopbackSendResult.Closed) return@async
+                    }
                 }
-            }
             advanceTimeBy(1.seconds)
             runCurrent()
             transport.close()
@@ -172,11 +176,12 @@ class SimulatedTranscriptionBatchTest {
         transport: InMemoryLoopbackTransport,
         frames: List<com.zeropointsix.dobaosay.asr.AudioFrame>,
     ) {
-        val sender = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
-            frames.forEach { frame ->
-                if (transport.send(frame) == LoopbackSendResult.Closed) return@async
+        val sender =
+            backgroundScope.async(start = CoroutineStart.UNDISPATCHED) {
+                frames.forEach { frame ->
+                    if (transport.send(frame) == LoopbackSendResult.Closed) return@async
+                }
             }
-        }
         var consumed = 0
         while (consumed < frames.size && session.snapshot.value.state !is AsrSessionState.Closed) {
             if (spec.consumerDelay.isPositive()) delay(spec.consumerDelay)
@@ -296,14 +301,14 @@ class SimulatedTranscriptionBatchTest {
             append("  \"summary\": {\"total\": 12, \"success\": 8, \"failed\": 3, \"cancelled\": 1},\n")
             append("  \"scenarios\": [\n")
             forEachIndexed { index, result ->
-                append(result.toJson())
+                append(result.toJsonObject())
                 if (index != lastIndex) append(',')
                 append('\n')
             }
             append("  ]\n}\n")
         }
 
-    private fun ScenarioResult.toJson(): String =
+    private fun ScenarioResult.toJsonObject(): String =
         "    {\"id\": \"$id\", \"outcome\": \"$outcome\", \"failureCode\": " +
             (failureCode?.let { "\"$it\"" } ?: "null") +
             ", \"inputFrames\": $inputFrames, \"driverFrames\": $driverFrames, " +
