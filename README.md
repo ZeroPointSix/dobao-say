@@ -9,18 +9,22 @@
 ## 技术边界
 
 - 后端核心：Kotlin/JVM 2.4.10。
-- 构建与 CI：JDK 17、Gradle 9.5.0。
+- 构建与 CI：JDK 17、Gradle Wrapper 9.5.0。
 - Android/UI 在独立任务中进行特化实现。
 - 正式代码采用 clean-room 独立实现。
 - 未完成许可证和服务授权核查前，禁止复制参考仓库源码或接入私有协议。
 
 ## 构建
 
+安装 JDK 17 后，在干净检出中执行：
+
 ```bash
-gradle --no-daemon clean test
+./gradlew --no-daemon --stacktrace --warning-mode=fail clean check
 ```
 
-CI 会安装固定 Gradle 版本，因此仓库当前不提交未经本地生成并校验的 Wrapper 二进制。
+该单一入口会编译后端核心、运行单元测试、将 Kotlin 编译警告视为错误，并执行稳定的基础格式检查。Wrapper 固定 Gradle 9.5.0，下载分发包时会校验 SHA-256。
+
+详细版本、命名空间与暂缓决策见 [构建基线](docs/build-baseline.md)。
 
 ## 安全
 

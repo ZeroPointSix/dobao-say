@@ -1,3 +1,66 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+
 plugins {
     kotlin("jvm") version "2.4.10" apply false
+}
+
+abstract class KotlinQualityCheck : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceFiles: ConfigurableFileCollection
+
+    @TaskAction
+    fun verifySources() {
+        val violations = mutableListOf<String>()
+
+        sourceFiles.files.sortedBy { it.invariantSeparatorsPath }.forEach { file ->
+            val relativePath = project.rootDir.toPath().relativize(file.toPath()).toString()
+            val text = file.readText()
+
+            if (text.isNotEmpty() && !text.endsWith("\n")) {
+                violations += "$relativePath: 文件末尾缺少换行"
+            }
+
+            text.lineSequence().forEachIndexed { index, line ->
+                if ('\t' in line) {
+                    violations += "$relativePath:${index + 1}: 包含 Tab"
+                }
+                if (line.endsWith(' ') || line.endsWith('\t')) {
+                    violations += "$relativePath:${index + 1}: 包含行尾空白"
+                }
+            }
+        }
+
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                buildString {
+                    appendLine("Kotlin 格式检查失败：")
+                    violations.forEach { appendLine("- $it") }
+                },
+            )
+        }
+    }
+}
+
+val kotlinQualityCheck by tasks.registering(KotlinQualityCheck::class) {
+    group = "verification"
+    description = "检查 Kotlin 源码与构建脚本的稳定基础格式"
+    sourceFiles.from(
+        fileTree(rootDir) {
+            include("**/*.kt", "**/*.kts")
+            exclude("**/build/**", "**/.gradle/**")
+        },
+    )
+}
+
+subprojects {
+    tasks.matching { it.name == "check" }.configureEach {
+        dependsOn(rootProject.tasks.named("kotlinQualityCheck"))
+    }
 }
