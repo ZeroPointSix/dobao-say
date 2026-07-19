@@ -320,7 +320,7 @@ class SimulatedTranscriptionBatchTest {
             append("{\n  \"schemaVersion\": 1,\n  \"simulated\": true,\n")
             append("  \"summary\": {\"total\": 12, \"success\": 8, \"failed\": 3, \"cancelled\": 1},\n")
             append("  \"scenarios\": [\n")
-            forEachIndexed { index, result ->
+            this@toJson.forEachIndexed { index, result ->
                 append(result.toJsonObject())
                 if (index != lastIndex) append(',')
                 append('\n')
