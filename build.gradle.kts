@@ -20,19 +20,19 @@ abstract class KotlinQualityCheck : DefaultTask() {
         val violations = mutableListOf<String>()
 
         sourceFiles.files.sortedBy { it.invariantSeparatorsPath }.forEach { file ->
-            val relativePath = project.rootDir.toPath().relativize(file.toPath()).toString()
+            val path = file.invariantSeparatorsPath
             val text = file.readText()
 
             if (text.isNotEmpty() && !text.endsWith("\n")) {
-                violations += "$relativePath: 文件末尾缺少换行"
+                violations += "$path: 文件末尾缺少换行"
             }
 
             text.lineSequence().forEachIndexed { index, line ->
                 if ('\t' in line) {
-                    violations += "$relativePath:${index + 1}: 包含 Tab"
+                    violations += "$path:${index + 1}: 包含 Tab"
                 }
                 if (line.endsWith(' ') || line.endsWith('\t')) {
-                    violations += "$relativePath:${index + 1}: 包含行尾空白"
+                    violations += "$path:${index + 1}: 包含行尾空白"
                 }
             }
         }
