@@ -1,6 +1,7 @@
 package com.zeropointsix.dobaosay.session
 
 import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.atomic.AtomicBoolean
 
 enum class VoicePhase {
     Idle,
@@ -25,6 +26,9 @@ data class VoiceUiState(
  * Process-local fan-out so Activity can observe Service session state without AndroidX.
  */
 object VoiceSessionBus {
+    /** True while the user is holding the record button (press-to-talk). */
+    val holdPressed = AtomicBoolean(false)
+
     @Volatile
     var latest: VoiceUiState = VoiceUiState()
         private set
