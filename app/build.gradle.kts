@@ -13,8 +13,8 @@ android {
         applicationId = "com.zeropointsix.dobaosay"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.5.2-optimize-ui"
+        versionCode = 8
+        versionName = "0.5.3-review-fix"
     }
 
     compileOptions {
