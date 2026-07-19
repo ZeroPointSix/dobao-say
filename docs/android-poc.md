@@ -61,9 +61,19 @@ app/build/outputs/apk/debug/app-debug.apk
 - 松开按钮后停止录音并请求最终结果。
 - 收到最终文本后写入系统剪贴板，并在屏幕上展示。
 
+## 系统基础设施
+
+按住说话已改由 `VoiceCaptureService`（foregroundServiceType=microphone）承载：
+
+- `PermissionGate` 统一申请麦克风/通知权限
+- `MicPcmCapture` + `AudioFocusController` 负责采集与焦点
+- 前台通知标明正在录音，并提供停止动作
+- `MainActivity` 只驱动开始/停止并观察 `VoiceSessionBus`
+
+细节见 [android-system-infra.md](android-system-infra.md)。
+
 ## 限制
 
-- PoC 只支持 Activity 前台按住录音；没有后台录音、锁屏录音或 Foreground Service。
-- 由于麦克风只在前台 Activity 且用户持续按住按钮时使用，本 PoC 暂不创建前台通知。后续如果要支持后台、悬浮窗、锁屏或长时间录音，需要新增 Foreground Service 与持续通知。
+- 仍无悬浮窗全局入口、锁屏专用策略或 Keystore 凭据落盘（见 ZER-110 / ZER-127）。
 - 未提交真实用户音频、设备凭据、token 或转写文本。
-- 当前云环境完成了 Debug APK 构建，但未连接真机执行端到端录音验收。
+- 当前云环境可完成 Debug APK 构建；真机麦克风端到端见 ZER-126。
