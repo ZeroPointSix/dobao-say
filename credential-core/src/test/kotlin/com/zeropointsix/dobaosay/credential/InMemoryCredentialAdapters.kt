@@ -11,6 +11,10 @@ internal class TestProtector : CredentialProtector {
     var throwOnOpen: Exception? = null
     var sealEntered: CompletableDeferred<Unit>? = null
     var sealGate: CompletableDeferred<Unit>? = null
+    var lastSealTransform: ByteArray? = null
+        private set
+    var lastOpenTransform: ByteArray? = null
+        private set
 
     override suspend fun seal(secret: SecretBytes): SealResult {
         sealEntered?.complete(Unit)
@@ -18,7 +22,13 @@ internal class TestProtector : CredentialProtector {
         throwOnSeal?.let { throw it }
         if (sealUnavailable) return SealResult.Unavailable(CredentialErrorCode.PROTECTOR_UNAVAILABLE)
         return secret.useBytes { plain ->
-            SealResult.Sealed(ProtectedPayload.copyOf(transform(plain)))
+            val transformed = transform(plain)
+            lastSealTransform = transformed
+            try {
+                SealResult.Sealed(ProtectedPayload.copyOf(transformed))
+            } finally {
+                transformed.fill(0)
+            }
         }
     }
 
@@ -27,7 +37,13 @@ internal class TestProtector : CredentialProtector {
         if (openUnavailable) return OpenResult.Unavailable(CredentialErrorCode.PROTECTOR_UNAVAILABLE)
         if (corruptOnOpen) return OpenResult.Corrupt
         return payload.useBytes { sealed ->
-            OpenResult.Opened(SecretBytes.copyOf(transform(sealed)))
+            val transformed = transform(sealed)
+            lastOpenTransform = transformed
+            try {
+                OpenResult.Opened(SecretBytes.copyOf(transformed))
+            } finally {
+                transformed.fill(0)
+            }
         }
     }
 

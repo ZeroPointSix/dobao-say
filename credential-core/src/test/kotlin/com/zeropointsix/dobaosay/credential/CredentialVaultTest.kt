@@ -221,6 +221,18 @@ class CredentialVaultTest {
     }
 
     @Test
+    fun `test protector wipes transformed seal and open arrays`() = runTest {
+        val protector = TestProtector()
+        val vault = vault(protector = protector)
+
+        write(vault)
+        readBytes(vault)
+
+        assertTrue(protector.lastSealTransform?.all { it == 0.toByte() } == true)
+        assertTrue(protector.lastOpenTransform?.all { it == 0.toByte() } == true)
+    }
+
+    @Test
     fun `throwing diagnostics never changes committed business results`() = runTest {
         val diagnostics = CredentialDiagnostics { throw IllegalStateException("observer failed") }
         val vault = vault(diagnostics = diagnostics)
