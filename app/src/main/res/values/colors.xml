@@ -1,10 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="dobao_bg_start">#FFF8F1</color>
-    <color name="dobao_bg_end">#EAF2FF</color>
-    <color name="dobao_ink">#1D2433</color>
-    <color name="dobao_muted">#5D6472</color>
-    <color name="dobao_button">#1D2433</color>
-    <color name="dobao_button_pressed">#35405A</color>
-    <color name="dobao_button_text">#FFFFFF</color>
+    <!-- Linear-inspired dark palette from Notion frontend draft (ZER-119) -->
+    <color name="lin_bg">#FF0D0D0D</color>
+    <color name="lin_surface">#FF161616</color>
+    <color name="lin_surface_2">#FF1C1C1C</color>
+    <color name="lin_border">#FF2A2A2A</color>
+    <color name="lin_ink">#FFF5F5F5</color>
+    <color name="lin_muted">#FF8A8F98</color>
+    <color name="lin_text">#FFF5F5F5</color>
+    <color name="lin_text_muted">#FF8A8F98</color>
+    <color name="lin_accent">#FF5E6AD2</color>
+    <color name="lin_accent_start">#FF5E6AD2</color>
+    <color name="lin_accent_end">#FF8B5CF6</color>
+    <color name="lin_recording">#FFE5484D</color>
+    <color name="lin_finalizing">#FFF2A60D</color>
+    <color name="lin_success">#FF30A46C</color>
+    <color name="lin_error">#FFE5484D</color>
+    <color name="lin_chip_bg">#CC1C1C1C</color>
+    <color name="lin_white">#FFFFFFFF</color>
 </resources>
