@@ -25,6 +25,7 @@ data class LoopbackStats(
     val acceptedFrames: Long = 0,
     val receivedFrames: Long = 0,
     val droppedOnCloseFrames: Long = 0,
+    val droppedOnCancelFrames: Long = 0,
     val activeSenders: Int = 0,
     val closeCount: Int = 0,
 )
@@ -33,7 +34,8 @@ data class LoopbackStats(
  * Provider-neutral, fully in-memory audio transport with strict bounded backpressure.
  *
  * At most [capacity] frames are queued. Additional [send] calls suspend without allocating queue
- * entries. Closing the transport drops queued frames and wakes suspended senders with
+ * entries. Accepted frames obey this conservation law: accepted = queued + in-delivery + received
+ * + dropped-on-close + dropped-on-cancel. Closing the transport drops queued frames and wakes suspended senders with
  * [LoopbackSendResult.Closed]. No worker coroutine is created, so close/cancel cannot leave a
  * background worker behind.
  */
@@ -130,6 +132,7 @@ class InMemoryLoopbackTransport(
                 it.copy(
                     inDeliveryFrames = it.inDeliveryFrames - 1,
                     receivedFrames = it.receivedFrames + if (delivered) 1 else 0,
+                    droppedOnCancelFrames = it.droppedOnCancelFrames + if (delivered) 0 else 1,
                 )
             }
             permits.trySend(Unit)
