@@ -293,7 +293,9 @@ class DefaultAsrSession(
             AsrEvent.Final(signal.resultId, signal.utteranceId, joined, sequence, elapsed)
         }
 
-        if (config.commitFinalImmediately || stopping) {
+        // PTT / multi-pass optimize: while Stopping, keep absorbing Finals (IME 2nd/3rd pass)
+        // and only commit on RemoteClosed or FINAL timeout — never freeze on the first Final.
+        if (config.commitFinalImmediately) {
             cancelTimeout(TimeoutPhase.FINAL)
             val success = SessionOutcome.Succeeded(signal.resultId, joined)
             mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
