@@ -37,6 +37,8 @@ class DefaultAsrSession(
     private var connectTimeoutJob: Job? = null
     private var finalTimeoutJob: Job? = null
     private var sessionTimeoutJob: Job? = null
+    /** VAD-finalized utterance texts waiting to be joined (PTT / multi-segment mode). */
+    private val finalizedSegments = ArrayList<String>()
 
     private val mutableSnapshot = MutableStateFlow(AsrSessionSnapshot())
     override val snapshot: StateFlow<AsrSessionSnapshot> = mutableSnapshot.asStateFlow()
@@ -252,20 +254,15 @@ class DefaultAsrSession(
                 if (!canAcceptFinal()) {
                     protocolFailure("final_out_of_order")
                 } else {
-                    cancelTimeout(TimeoutPhase.FINAL)
-                    val success = SessionOutcome.Succeeded(signal.resultId, signal.text)
-                    mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
-                    publish { sequence, elapsed ->
-                        AsrEvent.Final(signal.resultId, signal.utteranceId, signal.text, sequence, elapsed)
-                    }
-                    commitTerminal(success, abort = false)
+                    handleFinal(signal)
                 }
             }
 
             DriverSignal.SpeechEnded -> {
-                if (isReadyOrStreaming()) {
+                if (!isReadyOrStreaming()) return
+                publish { sequence, elapsed -> AsrEvent.SpeechEnded(sequence, elapsed) }
+                if (config.autoStopOnVad) {
                     mutableSnapshot.value = mutableSnapshot.value.copy(state = AsrSessionState.Stopping(StopReason.VAD))
-                    publish { sequence, elapsed -> AsrEvent.SpeechEnded(sequence, elapsed) }
                     scheduleTimeout(TimeoutPhase.FINAL, config.stopFinalTimeout)
                     enqueueEffect(DriverEffect.RequestStop)
                 }
@@ -282,10 +279,56 @@ class DefaultAsrSession(
             }
 
             DriverSignal.RemoteClosed -> {
-                protocolFailure("remote_closed_before_final")
+                handleRemoteClosed()
             }
         }
     }
+
+    private suspend fun handleFinal(signal: DriverSignal.Final) {
+        val joined = rememberSegment(signal.text)
+        mutableSnapshot.value = mutableSnapshot.value.copy(partialText = joined)
+        publish { sequence, elapsed ->
+            AsrEvent.Final(signal.resultId, signal.utteranceId, joined, sequence, elapsed)
+        }
+
+        val stopping = mutableSnapshot.value.state is AsrSessionState.Stopping
+        if (config.commitFinalImmediately || stopping) {
+            cancelTimeout(TimeoutPhase.FINAL)
+            val success = SessionOutcome.Succeeded(signal.resultId, joined)
+            mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
+            commitTerminal(success, abort = false)
+        }
+    }
+
+    private suspend fun handleRemoteClosed() {
+        val state = mutableSnapshot.value.state
+        if (state is AsrSessionState.Stopping && !config.commitFinalImmediately) {
+            cancelTimeout(TimeoutPhase.FINAL)
+            val text = joinedTranscript().ifBlank { mutableSnapshot.value.partialText.orEmpty().trim() }
+            if (text.isNotEmpty()) {
+                val success = SessionOutcome.Succeeded("remote-closed", text)
+                mutableSnapshot.value = mutableSnapshot.value.copy(finalResult = success)
+                commitTerminal(success, abort = false)
+            } else {
+                commitTerminal(SessionOutcome.ClosedWithoutResult, abort = false)
+            }
+            return
+        }
+        protocolFailure("remote_closed_before_final")
+    }
+
+    private fun rememberSegment(text: String): String {
+        val trimmed = text.trim()
+        if (trimmed.isNotEmpty()) {
+            val last = finalizedSegments.lastOrNull()
+            if (last != trimmed) {
+                finalizedSegments += trimmed
+            }
+        }
+        return joinedTranscript()
+    }
+
+    private fun joinedTranscript(): String = finalizedSegments.joinToString("")
 
     private suspend fun handleTimeout(phase: TimeoutPhase) {
         val applies =
