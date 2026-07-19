@@ -96,6 +96,7 @@ internal class SimulatedTranscriptionDriver(
             check(releases.incrementAndGet() == 1)
             effects += "release"
             released.complete(Unit)
+            Unit
         }
 
     suspend fun emitSpeechEnded() {
