@@ -417,7 +417,10 @@ class DefaultAsrSession(
     private fun canAcceptFinal(): Boolean = isReadyOrStreaming() || mutableSnapshot.value.state is AsrSessionState.Stopping
 
     private fun validateFrame(frame: AudioFrame): AsrFailure.InvalidAudio? {
-        if (frame.bytes.size != config.audioFormat.bytesPerFrame) {
+        if (frame.format != config.audioFormat) {
+            return AsrFailure.InvalidAudio("frame_format")
+        }
+        if (frame.byteCount != config.audioFormat.bytesPerFrame) {
             return AsrFailure.InvalidAudio("frame_size")
         }
         if (frame.sequence <= lastAudioSequence) return AsrFailure.InvalidAudio("sequence_not_monotonic")
