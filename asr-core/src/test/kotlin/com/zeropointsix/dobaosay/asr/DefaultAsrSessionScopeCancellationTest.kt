@@ -1,9 +1,5 @@
 package com.zeropointsix.dobaosay.asr
 
-import java.util.Collections
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -19,66 +15,74 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import java.util.Collections
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.time.Duration.Companion.seconds
 
 class DefaultAsrSessionScopeCancellationTest {
     @Test
-    fun `external scope cancellation completes queued and later API calls`() = runBlocking {
-        val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val collectorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val driver = FloodingHangingDriver()
-        val session = DefaultAsrSession(AsrSessionConfig(), driver, scope = sessionScope)
-        val firstEvent = CompletableDeferred<Unit>()
-        val collector = collectorScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            session.events.collect {
-                firstEvent.complete(Unit)
-                awaitCancellation()
-            }
-        }
+    fun `external scope cancellation completes queued and later API calls`() =
+        runBlocking {
+            val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val collectorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val driver = FloodingHangingDriver()
+            val session = DefaultAsrSession(AsrSessionConfig(), driver, scope = sessionScope)
+            val firstEvent = CompletableDeferred<Unit>()
+            val collector =
+                collectorScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    session.events.collect {
+                        firstEvent.complete(Unit)
+                        awaitCancellation()
+                    }
+                }
 
-        try {
-            assertEquals(
-                AsrCommandResult.Accepted,
-                withTimeout(5.seconds) { session.start() },
-            )
-            withTimeout(5.seconds) {
-                firstEvent.await()
-                driver.signalsQueued.await()
-            }
-
-            val pendingPush = async(Dispatchers.Default) {
-                session.pushAudio(AudioFrame(0, 0, ByteArray(640)))
-            }
-            yield()
-            assertFalse(pendingPush.isCompleted)
-
-            val rootJob = checkNotNull(sessionScope.coroutineContext[Job])
-            rootJob.cancelAndJoin()
-
-            assertEquals(
-                AsrCommandResult.IgnoredAlreadyHandled,
-                withTimeout(5.seconds) { pendingPush.await() },
-            )
-            val laterResults = withTimeout(5.seconds) {
-                listOf(
-                    session.start(),
-                    session.pushAudio(AudioFrame(1, 20, ByteArray(640))),
-                    session.stop(),
-                    session.cancel(CancelReason.USER),
-                    session.close(),
+            try {
+                assertEquals(
+                    AsrCommandResult.Accepted,
+                    withTimeout(5.seconds) { session.start() },
                 )
-            }
+                withTimeout(5.seconds) {
+                    firstEvent.await()
+                    driver.signalsQueued.await()
+                }
 
-            assertEquals(List(5) { AsrCommandResult.IgnoredAlreadyHandled }, laterResults)
-            withTimeout(5.seconds) { driver.connectCancelled.await() }
-            assertFalse(rootJob.children.any())
-            assertEquals(listOf("connect"), driver.effects.toList())
-        } finally {
-            sessionScope.cancel()
-            collectorScope.cancel()
-            collector.cancelAndJoin()
+                val pendingPush =
+                    async(Dispatchers.Default) {
+                        session.pushAudio(AudioFrame(0, 0, ByteArray(640)))
+                    }
+                yield()
+                assertFalse(pendingPush.isCompleted)
+
+                val rootJob = checkNotNull(sessionScope.coroutineContext[Job])
+                rootJob.cancelAndJoin()
+
+                assertEquals(
+                    AsrCommandResult.IgnoredAlreadyHandled,
+                    withTimeout(5.seconds) { pendingPush.await() },
+                )
+                val laterResults =
+                    withTimeout(5.seconds) {
+                        listOf(
+                            session.start(),
+                            session.pushAudio(AudioFrame(1, 20, ByteArray(640))),
+                            session.stop(),
+                            session.cancel(CancelReason.USER),
+                            session.close(),
+                        )
+                    }
+
+                assertEquals(List(5) { AsrCommandResult.IgnoredAlreadyHandled }, laterResults)
+                withTimeout(5.seconds) { driver.connectCancelled.await() }
+                assertFalse(rootJob.children.any())
+                assertEquals(listOf("connect"), driver.effects.toList())
+            } finally {
+                sessionScope.cancel()
+                collectorScope.cancel()
+                collector.cancelAndJoin()
+            }
         }
-    }
 
     private class FloodingHangingDriver : AsrDriver {
         val effects = Collections.synchronizedList(mutableListOf<String>())

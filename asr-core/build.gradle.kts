@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    id("org.jmailen.kotlinter")
 }
 
 group = "com.zeropointsix.dobaosay"

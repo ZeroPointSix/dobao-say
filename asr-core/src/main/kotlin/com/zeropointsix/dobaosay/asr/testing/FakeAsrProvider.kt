@@ -6,27 +6,39 @@ import com.zeropointsix.dobaosay.asr.AsrSessionConfig
 import com.zeropointsix.dobaosay.asr.AudioFrame
 import com.zeropointsix.dobaosay.asr.DriverSignal
 import com.zeropointsix.dobaosay.asr.ProviderId
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.delay
 import java.util.Collections
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.delay
 import kotlin.time.Duration
 
 class FakeAsrProvider(
     private val driverFactory: () -> FakeAsrDriver = ::FakeAsrDriver,
 ) : AsrProvider {
     override val id = ProviderId("fake")
+
     override fun createDriver(config: AsrSessionConfig): AsrDriver = driverFactory()
 }
 
 enum class FakeDriverTrigger { CONNECT, AUDIO, STOP }
 
 sealed interface FakeDriverStep {
-    data class Emit(val signal: DriverSignal) : FakeDriverStep
-    data class Delay(val duration: Duration) : FakeDriverStep
-    data class Throw(val exception: RuntimeException = IllegalStateException("scripted failure")) : FakeDriverStep
-    data class Gate(val gate: Deferred<Unit>) : FakeDriverStep
+    data class Emit(
+        val signal: DriverSignal,
+    ) : FakeDriverStep
+
+    data class Delay(
+        val duration: Duration,
+    ) : FakeDriverStep
+
+    data class Throw(
+        val exception: RuntimeException = IllegalStateException("scripted failure"),
+    ) : FakeDriverStep
+
+    data class Gate(
+        val gate: Deferred<Unit>,
+    ) : FakeDriverStep
 }
 
 class FakeAsrDriver(
