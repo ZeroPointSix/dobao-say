@@ -53,6 +53,7 @@ class DoubaoAsrDriver(
     private var receiverJob: Job? = null
     private var nextFrameState = DoubaoFrameState.FIRST
     private var timestampBaseMs: Long? = null
+    private var lastSentTimestampMs: Long? = null
 
     override suspend fun connect(sink: suspend (DriverSignal) -> Unit) {
         try {
@@ -135,11 +136,15 @@ class DoubaoAsrDriver(
                     } else {
                         DoubaoFrameState.MIDDLE
                     }
+                val frameDuration = runtimeConfig.audioFormat.frameDurationMs.toLong()
+                val timestamp =
+                    (lastSentTimestampMs ?: System.currentTimeMillis()) + frameDuration
+                lastSentTimestampMs = timestamp
                 sendRequest(
                     DoubaoAsrRequest(
                         serviceName = "ASR",
                         methodName = "TaskRequest",
-                        payload = audioMetadata(System.currentTimeMillis()),
+                        payload = audioMetadata(timestamp),
                         audioData = opus,
                         requestId = requestId,
                         frameState = frameState,
@@ -291,7 +296,11 @@ class DoubaoAsrDriver(
         val base =
             timestampBaseMs
                 ?: (System.currentTimeMillis() - frame.timestampMs).also { timestampBaseMs = it }
-        return base + frame.timestampMs
+        val timestamp = base + frame.timestampMs
+        val monotonic =
+            lastSentTimestampMs?.let { last -> maxOf(timestamp, last + 1) } ?: timestamp
+        lastSentTimestampMs = monotonic
+        return monotonic
     }
 
     private fun validateFormat() {
