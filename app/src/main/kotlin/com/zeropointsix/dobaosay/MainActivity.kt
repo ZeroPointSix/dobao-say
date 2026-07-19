@@ -293,7 +293,7 @@ class MainActivity : Activity() {
 
             VoicePhase.Recognizing,
             VoicePhase.Stopping,
-            -> "识别中…"
+            -> "识别优化中…"
 
             VoicePhase.Failed -> "失败 · 单击重试 · 可手动复制上次结果"
         }
