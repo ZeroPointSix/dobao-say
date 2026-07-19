@@ -100,12 +100,26 @@ class InMemoryLoopbackTransport(
 
     suspend fun receive(): AudioFrame? {
         val frame = frames.receiveCatching().getOrNull() ?: return null
-        updateStats {
-            it.copy(
-                queuedFrames = it.queuedFrames - 1,
-                inDeliveryFrames = it.inDeliveryFrames + 1,
-            )
+        val acceptedForDelivery =
+            synchronized(statsLock) {
+                if (closed.get()) {
+                    false
+                } else {
+                    val current = mutableStats.value
+                    check(current.queuedFrames > 0) { "Loopback queue accounting is inconsistent" }
+                    mutableStats.value =
+                        current.copy(
+                            queuedFrames = current.queuedFrames - 1,
+                            inDeliveryFrames = current.inDeliveryFrames + 1,
+                        )
+                    true
+                }
+            }
+        if (!acceptedForDelivery) {
+            permits.trySend(Unit)
+            return null
         }
+
         var delivered = false
         try {
             if (deliveryDelay.isPositive()) delay(deliveryDelay)
@@ -113,6 +127,7 @@ class InMemoryLoopbackTransport(
             return frame
         } finally {
             updateStats {
+                check(it.inDeliveryFrames > 0) { "Loopback delivery accounting is inconsistent" }
                 it.copy(
                     inDeliveryFrames = it.inDeliveryFrames - 1,
                     receivedFrames = it.receivedFrames + if (delivered) 1 else 0,
