@@ -17,7 +17,7 @@ enum class VoicePhase {
 data class VoiceUiState(
     val phase: VoicePhase = VoicePhase.Idle,
     val title: String = "空闲",
-    val detail: String = "按住下方按钮开始录音，松开结束。",
+    val detail: String = "单击语音球开始，再单击结束。",
     val finalText: String? = null,
     val sessionId: String? = null,
 )
@@ -48,7 +48,7 @@ object VoiceSessionBus {
         return { listeners -= listener }
     }
 
-    fun resetIdle(detail: String = "按住下方按钮开始录音，松开结束。") {
+    fun resetIdle(detail: String = "单击语音球开始，再单击结束。") {
         publish(
             VoiceUiState(
                 phase = VoicePhase.Idle,

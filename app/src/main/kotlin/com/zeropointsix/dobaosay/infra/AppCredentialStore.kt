@@ -22,6 +22,11 @@ class AppCredentialStore(
         DoubaoCredentialFile.write(path, credentials)
     }
 
+    /** Deletes the on-disk credential file (Settings → Clear Credentials). */
+    fun clear() {
+        path.toFile().delete()
+    }
+
     companion object {
         const val FILE_NAME = "doubao-credentials.json"
     }
