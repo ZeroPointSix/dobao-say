@@ -165,26 +165,38 @@ class MainActivity : Activity() {
     }
 
     private fun onOrbClick() {
-        when (VoiceSessionBus.latest.phase) {
-            VoicePhase.Connecting,
-            VoicePhase.Recording,
-            VoicePhase.Recognizing,
-            -> {
+        val phase = VoiceSessionBus.latest.phase
+        val intentActive = VoiceSessionBus.holdPressed.get()
+        val livePhase =
+            phase == VoicePhase.Connecting ||
+                phase == VoicePhase.Recording ||
+                phase == VoicePhase.Recognizing
+
+        when {
+            phase == VoicePhase.Stopping -> {
+                // Allow cancel while optimizing (otherwise orb looks frozen for up to ~timeout).
+                VoiceSessionBus.holdPressed.set(false)
+                VoiceCaptureService.cancel(this)
+            }
+
+            intentActive || livePhase -> {
+                // Click-toggle stop: trust holdPressed even if phase is still Idle
+                // (Service cold-start lag before Connecting is published).
                 VoiceSessionBus.holdPressed.set(false)
                 VoiceCaptureService.stop(this)
             }
 
-            VoicePhase.Stopping -> {
-                // Ignore rapid taps while finalizing.
-            }
-
-            VoicePhase.Idle,
-            VoicePhase.Succeeded,
-            VoicePhase.Failed,
-            VoicePhase.Cancelled,
-            -> {
+            else -> {
                 PermissionGate.ensureVoicePermissions(this) {
                     VoiceSessionBus.holdPressed.set(true)
+                    // Optimistic phase so a fast second tap maps to stop, not a duplicate start.
+                    VoiceSessionBus.publish(
+                        VoiceUiState(
+                            phase = VoicePhase.Connecting,
+                            title = "连接中",
+                            detail = "正在启动录音…",
+                        ),
+                    )
                     VoiceCaptureService.start(this)
                 }
             }
@@ -199,7 +211,9 @@ class MainActivity : Activity() {
             hint.text = hintFor(state.phase)
 
             when (state.phase) {
-                VoicePhase.Recognizing -> {
+                VoicePhase.Recognizing,
+                VoicePhase.Stopping,
+                -> {
                     if (state.detail.isNotBlank()) {
                         transcript.text = state.detail
                     }
