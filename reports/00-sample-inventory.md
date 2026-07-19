@@ -35,7 +35,7 @@
 | jekins_name | `wave_ime_publish_pkg` | 同上 |
 | 业务域名 | `https://ime.doubao.com` | dex 字符串 |
 
-说明：尚未用 `aapt dump badging` 解析出正式 `versionCode/versionName`（本机暂无 Android build-tools）。上述 versionName 为高置信字符串线索，反编译后应对照 `BuildConfig` / manifest。
+说明：`versionName` / `versionCode` 已由 `aapt dump badging` 确认；dex 中的 `4.2.243.8-doubao` 等为内部引擎版本串，反编译后可对照 `BuildConfig` / manifest。
 
 ### 2.2 签名证书
 
