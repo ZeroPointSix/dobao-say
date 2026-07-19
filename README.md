@@ -15,7 +15,9 @@
 | SHA-256 | `c140d16625f1b8eddb21fa905f0e98a74b3e242d2638415801207c23c449d59a` |
 | MD5 | `9addf8dfb8bcf3f7c3781d429dc8890f` |
 | 包名 | `com.bytedance.android.doubaoime` |
-| 疑似版本名 | `4.2.243.8-doubao`（来自 dex 字符串，待 aapt/jadx 复核） |
+| versionName | `1.3.15`（`aapt dump badging` 确认） |
+| versionCode | `100315010` |
+| 内部引擎版本串 | `4.2.243.8-doubao`（dex 字符串） |
 | 关联版本串 | `4.2.1-rc.8-oime`、`4.3.2-rc.13` |
 | 构建标记 | `2b0b44c_20260714_124829_7662229808918579238`（`assets/slardar.properties`） |
 | 构建任务 | `wave_ime_publish_pkg` |
@@ -29,8 +31,12 @@
 
 更完整的清单见：
 
+- [`reports/README.md`](reports/README.md) — 逆向报告索引
 - `reports/00-sample-inventory.md`
 - `reports/01-upload-verification.md`
+- `reports/02-stage1-static-re.md`
+- `reports/03-ui-structure.md`
+- `reports/04-full-reverse-engineering-report.md` — **全面逆向分析报告（核心）**
 - `workspace/notes/native-libs-arm64.txt`
 - `originals/hashes/`
 
@@ -105,6 +111,7 @@ dobao-say/
 - [x] 加固判断：无传统 APK 壳；`libshell.so` 为输入引擎壳层（见 `reports/02-stage1-static-re.md`）
 - [x] IME 入口 / KeyboardJni / 云端 API 初图
 - [x] UI 界面结构（皮肤 DSL / 工具栏候选 / Android 叠加面板，见 `reports/03-ui-structure.md`）
+- [x] 全面逆向分析报告（见 `reports/04-full-reverse-engineering-report.md`）
 - [ ] 动态抓包与协议字段还原
 - [ ] Ghidra 级 native 伪代码 / UI 引擎符号
 - [ ] 词库格式文档
